@@ -19,6 +19,17 @@ impl Display for ArenaFull {
 impl Error for ArenaFull {}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct IndexNotReserved;
+
+impl Display for IndexNotReserved {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.write_str("Cannot insert with this index because it is not reserved")
+	}
+}
+
+impl Error for IndexNotReserved {}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Index {
 	index: usize,
 	generation: usize,
@@ -110,11 +121,20 @@ impl<T> Arena<T> {
 	pub fn controller(&self) -> Controller {
 		self.controller.clone()
 	}
+
+	pub fn insert(&mut self, index: Index, data: T) -> Result<(), IndexNotReserved> {
+		let slot = &mut self.slots[index.index];
+		if slot.data.is_some() || slot.generation != index.generation {
+			return Err(IndexNotReserved);
+		}
+		slot.data = Some(data);
+		Ok(())
+	}
 }
 
 #[cfg(test)]
 mod test {
-	use crate::{Arena, ArenaFull, Index};
+	use crate::{Arena, ArenaFull, Index, IndexNotReserved};
 
 	#[test]
 	fn reserve() {
@@ -142,5 +162,24 @@ mod test {
 			})
 		);
 		assert_eq!(controller.try_reserve(), Err(ArenaFull));
+	}
+
+	#[test]
+	fn insert() {
+		let mut arena = Arena::new(3);
+		let controller = arena.controller();
+		let index1 = controller.try_reserve().unwrap();
+		let index2 = controller.try_reserve().unwrap();
+		let index3 = controller.try_reserve().unwrap();
+		assert!(arena.insert(index1, 1).is_ok());
+		assert!(arena.insert(index2, 2).is_ok());
+		assert!(arena.insert(index3, 3).is_ok());
+		assert_eq!(arena.slots[0].data, Some(1));
+		assert_eq!(arena.slots[0].generation, 0);
+		assert_eq!(arena.slots[1].data, Some(2));
+		assert_eq!(arena.slots[1].generation, 0);
+		assert_eq!(arena.slots[2].data, Some(3));
+		assert_eq!(arena.slots[2].generation, 0);
+		assert_eq!(arena.insert(index1, 4), Err(IndexNotReserved));
 	}
 }
