@@ -42,7 +42,7 @@ struct ControllerSlot {
 }
 
 impl ControllerSlot {
-	pub fn new() -> Self {
+	fn new() -> Self {
 		Self {
 			free: AtomicBool::new(true),
 			generation: AtomicUsize::new(0),
@@ -56,13 +56,13 @@ struct ControllerInner {
 }
 
 impl ControllerInner {
-	pub fn new(capacity: usize) -> Self {
+	fn new(capacity: usize) -> Self {
 		Self {
 			slots: (0..capacity).map(|_| ControllerSlot::new()).collect(),
 		}
 	}
 
-	pub fn try_reserve(&self) -> Result<Index, ArenaFull> {
+	fn try_reserve(&self) -> Result<Index, ArenaFull> {
 		for (i, slot) in self.slots.iter().enumerate() {
 			if slot.free.load(Ordering::SeqCst) {
 				slot.free.store(false, Ordering::SeqCst);
@@ -80,7 +80,7 @@ impl ControllerInner {
 pub struct Controller(Arc<ControllerInner>);
 
 impl Controller {
-	pub fn new(capacity: usize) -> Self {
+	fn new(capacity: usize) -> Self {
 		Self(Arc::new(ControllerInner::new(capacity)))
 	}
 
