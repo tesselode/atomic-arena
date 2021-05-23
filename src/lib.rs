@@ -1,7 +1,22 @@
-use std::sync::{
-	atomic::{AtomicBool, AtomicUsize, Ordering},
-	Arc,
+use std::{
+	error::Error,
+	fmt::Display,
+	sync::{
+		atomic::{AtomicBool, AtomicUsize, Ordering},
+		Arc,
+	},
 };
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ArenaFull;
+
+impl Display for ArenaFull {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.write_str("Cannot reserve an index because the arena is full")
+	}
+}
+
+impl Error for ArenaFull {}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Index {
@@ -36,17 +51,17 @@ impl ControllerInner {
 		}
 	}
 
-	pub fn try_reserve(&self) -> Option<Index> {
+	pub fn try_reserve(&self) -> Result<Index, ArenaFull> {
 		for (i, slot) in self.slots.iter().enumerate() {
 			if slot.free.load(Ordering::SeqCst) {
 				slot.free.store(false, Ordering::SeqCst);
-				return Some(Index {
+				return Ok(Index {
 					index: i,
 					generation: slot.generation.load(Ordering::SeqCst),
 				});
 			}
 		}
-		None
+		Err(ArenaFull)
 	}
 }
 
@@ -58,7 +73,7 @@ impl Controller {
 		Self(Arc::new(ControllerInner::new(capacity)))
 	}
 
-	pub fn try_reserve(&self) -> Option<Index> {
+	pub fn try_reserve(&self) -> Result<Index, ArenaFull> {
 		self.0.try_reserve()
 	}
 }
@@ -99,7 +114,7 @@ impl<T> Arena<T> {
 
 #[cfg(test)]
 mod test {
-	use crate::{Arena, Index};
+	use crate::{Arena, ArenaFull, Index};
 
 	#[test]
 	fn reserve() {
@@ -107,25 +122,25 @@ mod test {
 		let controller = arena.controller();
 		assert_eq!(
 			controller.try_reserve(),
-			Some(Index {
+			Ok(Index {
 				index: 0,
 				generation: 0,
 			})
 		);
 		assert_eq!(
 			controller.try_reserve(),
-			Some(Index {
+			Ok(Index {
 				index: 1,
 				generation: 0,
 			})
 		);
 		assert_eq!(
 			controller.try_reserve(),
-			Some(Index {
+			Ok(Index {
 				index: 2,
 				generation: 0,
 			})
 		);
-		assert_eq!(controller.try_reserve(), None);
+		assert_eq!(controller.try_reserve(), Err(ArenaFull));
 	}
 }
