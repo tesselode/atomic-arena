@@ -186,4 +186,39 @@ impl<T> Arena<T> {
 			None
 		}
 	}
+
+	pub fn iter(&self) -> Iter<T> {
+		Iter::new(self)
+	}
+}
+
+pub struct Iter<'a, T> {
+	arena: &'a Arena<T>,
+	index: usize,
+}
+
+impl<'a, T> Iter<'a, T> {
+	fn new(arena: &'a Arena<T>) -> Self {
+		Self { arena, index: 0 }
+	}
+}
+
+impl<'a, T> Iterator for Iter<'a, T> {
+	type Item = (Index, &'a T);
+
+	fn next(&mut self) -> Option<Self::Item> {
+		while self.index < self.arena.slots.len() {
+			let slot = &self.arena.slots[self.index];
+			if let Some(data) = &slot.data {
+				let index = Index {
+					index: self.index,
+					generation: slot.generation,
+				};
+				self.index += 1;
+				return Some((index, data));
+			}
+			self.index += 1;
+		}
+		None
+	}
 }
