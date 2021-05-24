@@ -46,6 +46,46 @@ fn benchmark(c: &mut Criterion) {
 			)
 		});
 	}
+
+	struct IterBenchmarkConfig {
+		len: usize,
+		capacity: usize,
+	}
+	let configs = [
+		IterBenchmarkConfig {
+			len: 100,
+			capacity: 10_000,
+		},
+		IterBenchmarkConfig {
+			len: 10_000,
+			capacity: 10_000,
+		},
+	];
+	for config in configs {
+		c.bench_with_input(
+			BenchmarkId::new("iter", format!("{} / {}", config.len, config.capacity)),
+			&config,
+			|b, config| {
+				b.iter_batched(
+					|| {
+						let mut arena = Arena::new(config.capacity);
+						let mut indices: Vec<Index> = (0..config.capacity)
+							.map(|i| arena.insert(i).unwrap())
+							.collect();
+						for index in indices
+							.partial_shuffle(&mut thread_rng(), config.capacity - config.len)
+							.0
+						{
+							arena.remove(*index).unwrap();
+						}
+						arena
+					},
+					|arena| arena.iter().count(),
+					BatchSize::SmallInput,
+				)
+			},
+		);
+	}
 }
 
 criterion_group!(benches, benchmark);
