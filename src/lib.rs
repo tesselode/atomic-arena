@@ -132,6 +132,14 @@ impl<T> Arena<T> {
 		self.controller.clone()
 	}
 
+	pub fn capacity(&self) -> usize {
+		self.slots.len()
+	}
+
+	pub fn len(&self) -> usize {
+		self.slots.iter().filter(|slot| slot.data.is_some()).count()
+	}
+
 	pub fn insert(&mut self, index: Index, data: T) -> Result<(), IndexNotReserved> {
 		let slot = &mut self.slots[index.index];
 		if slot.data.is_some() || slot.generation != index.generation {
@@ -288,5 +296,41 @@ mod test {
 		assert_eq!(arena.get_mut(index1), None);
 		assert_eq!(arena.get_mut(index2), Some(&mut 2));
 		assert_eq!(arena.get_mut(index3), Some(&mut 3));
+	}
+
+	#[test]
+	fn len() {
+		let mut arena = Arena::new(3);
+		let controller = arena.controller();
+		let index1 = controller.try_reserve().unwrap();
+		let index2 = controller.try_reserve().unwrap();
+		let index3 = controller.try_reserve().unwrap();
+		assert_eq!(arena.len(), 0);
+		arena.insert(index1, 1).unwrap();
+		assert_eq!(arena.len(), 1);
+		arena.insert(index2, 2).unwrap();
+		assert_eq!(arena.len(), 2);
+		arena.insert(index3, 3).unwrap();
+		assert_eq!(arena.len(), 3);
+		arena.remove(index1);
+		assert_eq!(arena.len(), 2);
+	}
+
+	#[test]
+	fn capacity() {
+		let mut arena = Arena::new(3);
+		let controller = arena.controller();
+		let index1 = controller.try_reserve().unwrap();
+		let index2 = controller.try_reserve().unwrap();
+		let index3 = controller.try_reserve().unwrap();
+		assert_eq!(arena.capacity(), 3);
+		arena.insert(index1, 1).unwrap();
+		assert_eq!(arena.capacity(), 3);
+		arena.insert(index2, 2).unwrap();
+		assert_eq!(arena.capacity(), 3);
+		arena.insert(index3, 3).unwrap();
+		assert_eq!(arena.capacity(), 3);
+		arena.remove(index1);
+		assert_eq!(arena.capacity(), 3);
 	}
 }
