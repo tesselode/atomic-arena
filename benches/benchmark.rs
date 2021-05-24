@@ -1,5 +1,6 @@
-use atomic_arena::Arena;
+use atomic_arena::{Arena, Index};
 use criterion::{criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion};
+use rand::{prelude::SliceRandom, thread_rng};
 
 fn benchmark(c: &mut Criterion) {
 	let sizes = [100, 10_000];
@@ -25,6 +26,24 @@ fn benchmark(c: &mut Criterion) {
 				},
 				BatchSize::SmallInput,
 			);
+		});
+		c.bench_with_input(BenchmarkId::new("remove", size), &size, |b, size| {
+			b.iter_batched(
+				|| {
+					let mut arena = Arena::new(*size * 2);
+					let mut indices: Vec<Index> =
+						(0..*size * 2).map(|i| arena.insert(i).unwrap()).collect();
+					let indices_to_remove =
+						Vec::from(indices.partial_shuffle(&mut thread_rng(), *size).0);
+					(arena, indices_to_remove)
+				},
+				|(mut arena, indices_to_remove)| {
+					for index in indices_to_remove {
+						arena.remove(index).unwrap();
+					}
+				},
+				BatchSize::SmallInput,
+			)
 		});
 	}
 }
