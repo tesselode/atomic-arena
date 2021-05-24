@@ -157,6 +157,24 @@ impl<T> Arena<T> {
 		self.controller.free(index.index);
 		slot.data.take()
 	}
+
+	pub fn get(&self, index: Index) -> Option<&T> {
+		let slot = &self.slots[index.index];
+		if slot.generation == index.generation {
+			slot.data.as_ref()
+		} else {
+			None
+		}
+	}
+
+	pub fn get_mut(&mut self, index: Index) -> Option<&mut T> {
+		let slot = &mut self.slots[index.index];
+		if slot.generation == index.generation {
+			slot.data.as_mut()
+		} else {
+			None
+		}
+	}
 }
 
 #[cfg(test)]
@@ -245,5 +263,30 @@ mod test {
 		assert_eq!(arena.slots[1].generation, 0);
 		assert_eq!(arena.slots[2].data, None);
 		assert_eq!(arena.slots[2].generation, 1);
+	}
+
+	#[test]
+	fn get() {
+		let mut arena = Arena::new(3);
+		let controller = arena.controller();
+		let index1 = controller.try_reserve().unwrap();
+		let index2 = controller.try_reserve().unwrap();
+		let index3 = controller.try_reserve().unwrap();
+		arena.insert(index1, 1).unwrap();
+		arena.insert(index2, 2).unwrap();
+		arena.insert(index3, 3).unwrap();
+		assert_eq!(arena.get(index1), Some(&1));
+		assert_eq!(arena.get(index2), Some(&2));
+		assert_eq!(arena.get(index3), Some(&3));
+		assert_eq!(arena.get_mut(index1), Some(&mut 1));
+		assert_eq!(arena.get_mut(index2), Some(&mut 2));
+		assert_eq!(arena.get_mut(index3), Some(&mut 3));
+		arena.remove(index1);
+		assert_eq!(arena.get(index1), None);
+		assert_eq!(arena.get(index2), Some(&2));
+		assert_eq!(arena.get(index3), Some(&3));
+		assert_eq!(arena.get_mut(index1), None);
+		assert_eq!(arena.get_mut(index2), Some(&mut 2));
+		assert_eq!(arena.get_mut(index3), Some(&mut 3));
 	}
 }
