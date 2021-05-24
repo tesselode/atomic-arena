@@ -84,37 +84,50 @@ fn insert() {
 fn remove() {
 	let mut arena = Arena::new(3);
 	let controller = arena.controller();
+	// insert 3 items
 	let index1 = controller.try_reserve().unwrap();
 	let index2 = controller.try_reserve().unwrap();
 	let index3 = controller.try_reserve().unwrap();
 	arena.insert_with_index(index1, 1).unwrap();
 	arena.insert_with_index(index2, 2).unwrap();
 	arena.insert_with_index(index3, 3).unwrap();
-	assert_eq!(arena.remove(index1), Some(1));
+	// remove items
 	assert_eq!(arena.remove(index3), Some(3));
+	assert_eq!(arena.remove(index1), Some(1));
+	assert_eq!(arena.remove(index2), Some(2));
+	// we shouldn't be able to remove it again and get anything back
 	assert_eq!(arena.remove(index1), None);
 	assert_eq!(arena.slots[0].data, None);
 	assert_eq!(arena.slots[0].generation, 1);
-	assert_eq!(arena.slots[1].data, Some(2));
-	assert_eq!(arena.slots[1].generation, 0);
+	assert_eq!(arena.slots[1].data, None);
+	assert_eq!(arena.slots[1].generation, 1);
 	assert_eq!(arena.slots[2].data, None);
 	assert_eq!(arena.slots[2].generation, 1);
+	// add 3 more elements
 	let index4 = controller.try_reserve();
 	assert_eq!(
 		index4,
+		Ok(Index {
+			index: 1,
+			generation: 1,
+		})
+	);
+	let index5 = controller.try_reserve();
+	assert_eq!(
+		index5,
 		Ok(Index {
 			index: 0,
 			generation: 1,
 		})
 	);
-	let index4 = index4.unwrap();
-	assert!(arena.insert_with_index(index4, 4).is_ok());
-	assert_eq!(arena.slots[0].data, Some(4));
-	assert_eq!(arena.slots[0].generation, 1);
-	assert_eq!(arena.slots[1].data, Some(2));
-	assert_eq!(arena.slots[1].generation, 0);
-	assert_eq!(arena.slots[2].data, None);
-	assert_eq!(arena.slots[2].generation, 1);
+	let index6 = controller.try_reserve();
+	assert_eq!(
+		index6,
+		Ok(Index {
+			index: 2,
+			generation: 1,
+		})
+	);
 }
 
 #[test]

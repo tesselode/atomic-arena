@@ -43,46 +43,59 @@ pub struct Index {
 struct ControllerSlot {
 	free: AtomicBool,
 	generation: AtomicUsize,
-}
-
-impl ControllerSlot {
-	fn new() -> Self {
-		Self {
-			free: AtomicBool::new(true),
-			generation: AtomicUsize::new(0),
-		}
-	}
+	next_free_slot_index: AtomicUsize,
 }
 
 #[derive(Debug)]
 struct ControllerInner {
 	slots: Vec<ControllerSlot>,
+	first_free_slot_index: AtomicUsize,
 }
 
 impl ControllerInner {
 	fn new(capacity: usize) -> Self {
 		Self {
-			slots: (0..capacity).map(|_| ControllerSlot::new()).collect(),
+			slots: (0..capacity)
+				.map(|i| ControllerSlot {
+					free: AtomicBool::new(true),
+					generation: AtomicUsize::new(0),
+					next_free_slot_index: AtomicUsize::new(if i < capacity - 1 {
+						i + 1
+					} else {
+						usize::MAX
+					}),
+				})
+				.collect(),
+			first_free_slot_index: AtomicUsize::new(0),
 		}
 	}
 
 	fn try_reserve(&self) -> Result<Index, ArenaFull> {
-		for (i, slot) in self.slots.iter().enumerate() {
-			if slot.free.load(Ordering::SeqCst) {
-				slot.free.store(false, Ordering::SeqCst);
-				return Ok(Index {
-					index: i,
-					generation: slot.generation.load(Ordering::SeqCst),
-				});
-			}
+		let first_free_slot_index = self.first_free_slot_index.load(Ordering::SeqCst);
+		if first_free_slot_index == usize::MAX {
+			return Err(ArenaFull);
 		}
-		Err(ArenaFull)
+		let slot = &self.slots[first_free_slot_index];
+		slot.free.store(false, Ordering::SeqCst);
+		self.first_free_slot_index.store(
+			slot.next_free_slot_index.load(Ordering::SeqCst),
+			Ordering::SeqCst,
+		);
+		Ok(Index {
+			index: first_free_slot_index,
+			generation: slot.generation.load(Ordering::SeqCst),
+		})
 	}
 
 	fn free(&self, index: usize) {
 		let slot = &self.slots[index];
 		slot.free.store(true, Ordering::SeqCst);
 		slot.generation.fetch_add(1, Ordering::SeqCst);
+		slot.next_free_slot_index.store(
+			self.first_free_slot_index.load(Ordering::SeqCst),
+			Ordering::SeqCst,
+		);
+		self.first_free_slot_index.store(index, Ordering::SeqCst);
 	}
 }
 
