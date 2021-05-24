@@ -144,13 +144,19 @@ impl<T> Arena<T> {
 		self.slots.iter().filter(|slot| slot.data.is_some()).count()
 	}
 
-	pub fn insert(&mut self, index: Index, data: T) -> Result<(), IndexNotReserved> {
+	pub fn insert_with_index(&mut self, index: Index, data: T) -> Result<(), IndexNotReserved> {
 		let slot = &mut self.slots[index.index];
 		if slot.data.is_some() || slot.generation != index.generation {
 			return Err(IndexNotReserved);
 		}
 		slot.data = Some(data);
 		Ok(())
+	}
+
+	pub fn insert(&mut self, data: T) -> Result<Index, ArenaFull> {
+		let index = self.controller.try_reserve()?;
+		self.insert_with_index(index, data).unwrap();
+		Ok(index)
 	}
 
 	pub fn remove(&mut self, index: Index) -> Option<T> {
