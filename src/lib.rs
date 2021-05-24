@@ -4,6 +4,7 @@ mod test;
 use std::{
 	error::Error,
 	fmt::Display,
+	iter::Enumerate,
 	sync::{
 		atomic::{AtomicBool, AtomicUsize, Ordering},
 		Arc,
@@ -193,13 +194,14 @@ impl<T> Arena<T> {
 }
 
 pub struct Iter<'a, T> {
-	arena: &'a Arena<T>,
-	index: usize,
+	slot_iter: Enumerate<std::slice::Iter<'a, ArenaSlot<T>>>,
 }
 
 impl<'a, T> Iter<'a, T> {
 	fn new(arena: &'a Arena<T>) -> Self {
-		Self { arena, index: 0 }
+		Self {
+			slot_iter: arena.slots.iter().enumerate(),
+		}
 	}
 }
 
@@ -207,17 +209,16 @@ impl<'a, T> Iterator for Iter<'a, T> {
 	type Item = (Index, &'a T);
 
 	fn next(&mut self) -> Option<Self::Item> {
-		while self.index < self.arena.slots.len() {
-			let slot = &self.arena.slots[self.index];
+		while let Some((i, slot)) = self.slot_iter.next() {
 			if let Some(data) = &slot.data {
-				let index = Index {
-					index: self.index,
-					generation: slot.generation,
-				};
-				self.index += 1;
-				return Some((index, data));
+				return Some((
+					Index {
+						index: i,
+						generation: slot.generation,
+					},
+					data,
+				));
 			}
-			self.index += 1;
 		}
 		None
 	}
