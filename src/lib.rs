@@ -11,6 +11,8 @@ use std::{
 	},
 };
 
+const NO_NEXT_FREE_SLOT: usize = usize::MAX;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ArenaFull;
 
@@ -62,7 +64,7 @@ impl ControllerInner {
 					next_free_slot_index: AtomicUsize::new(if i < capacity - 1 {
 						i + 1
 					} else {
-						usize::MAX
+						NO_NEXT_FREE_SLOT
 					}),
 				})
 				.collect(),
@@ -72,7 +74,7 @@ impl ControllerInner {
 
 	fn try_reserve(&self) -> Result<Index, ArenaFull> {
 		let first_free_slot_index = self.first_free_slot_index.load(Ordering::SeqCst);
-		if first_free_slot_index == usize::MAX {
+		if first_free_slot_index == NO_NEXT_FREE_SLOT {
 			return Err(ArenaFull);
 		}
 		let slot = &self.slots[first_free_slot_index];
