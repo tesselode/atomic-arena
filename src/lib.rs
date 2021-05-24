@@ -191,6 +191,10 @@ impl<T> Arena<T> {
 	pub fn iter(&self) -> Iter<T> {
 		Iter::new(self)
 	}
+
+	pub fn iter_mut(&mut self) -> IterMut<T> {
+		IterMut::new(self)
+	}
 }
 
 pub struct Iter<'a, T> {
@@ -211,6 +215,37 @@ impl<'a, T> Iterator for Iter<'a, T> {
 	fn next(&mut self) -> Option<Self::Item> {
 		while let Some((i, slot)) = self.slot_iter.next() {
 			if let Some(data) = &slot.data {
+				return Some((
+					Index {
+						index: i,
+						generation: slot.generation,
+					},
+					data,
+				));
+			}
+		}
+		None
+	}
+}
+
+pub struct IterMut<'a, T> {
+	slot_iter: Enumerate<std::slice::IterMut<'a, ArenaSlot<T>>>,
+}
+
+impl<'a, T> IterMut<'a, T> {
+	fn new(arena: &'a mut Arena<T>) -> Self {
+		Self {
+			slot_iter: arena.slots.iter_mut().enumerate(),
+		}
+	}
+}
+
+impl<'a, T> Iterator for IterMut<'a, T> {
+	type Item = (Index, &'a mut T);
+
+	fn next(&mut self) -> Option<Self::Item> {
+		while let Some((i, slot)) = self.slot_iter.next() {
+			if let Some(data) = &mut slot.data {
 				return Some((
 					Index {
 						index: i,

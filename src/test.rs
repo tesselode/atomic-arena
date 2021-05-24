@@ -179,3 +179,38 @@ fn iter() {
 	);
 	assert_eq!(iter.next(), None);
 }
+
+#[test]
+fn iter_mut() {
+	let mut arena = Arena::new(3);
+	let controller = arena.controller();
+	let index1 = controller.try_reserve().unwrap();
+	let index2 = controller.try_reserve().unwrap();
+	let index3 = controller.try_reserve().unwrap();
+	arena.insert(index1, 1).unwrap();
+	arena.insert(index2, 2).unwrap();
+	arena.insert(index3, 3).unwrap();
+	arena.remove(index2);
+	let mut iter = arena.iter_mut();
+	assert_eq!(
+		iter.next(),
+		Some((
+			Index {
+				index: 0,
+				generation: 0,
+			},
+			&mut 1
+		))
+	);
+	assert_eq!(
+		iter.next(),
+		Some((
+			Index {
+				index: 2,
+				generation: 0,
+			},
+			&mut 3
+		))
+	);
+	assert_eq!(iter.next(), None);
+}
