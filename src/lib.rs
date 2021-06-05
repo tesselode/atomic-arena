@@ -118,16 +118,22 @@ impl Controller {
 	}
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ArenaSlotState<T> {
+	Free,
+	Occupied { data: T },
+}
+
 #[derive(Debug)]
 struct ArenaSlot<T> {
-	data: Option<T>,
+	state: ArenaSlotState<T>,
 	generation: usize,
 }
 
 impl<T> ArenaSlot<T> {
 	pub fn new() -> Self {
 		Self {
-			data: None,
+			state: ArenaSlotState::Free,
 			generation: 0,
 		}
 	}
@@ -156,15 +162,27 @@ impl<T> Arena<T> {
 	}
 
 	pub fn len(&self) -> usize {
-		self.slots.iter().filter(|slot| slot.data.is_some()).count()
+		self.slots
+			.iter()
+			.filter(|slot| {
+				if let ArenaSlotState::Occupied { .. } = &slot.state {
+					true
+				} else {
+					false
+				}
+			})
+			.count()
 	}
 
 	pub fn insert_with_index(&mut self, index: Index, data: T) -> Result<(), IndexNotReserved> {
 		let slot = &mut self.slots[index.index];
-		if slot.data.is_some() || slot.generation != index.generation {
+		if let ArenaSlotState::Occupied { .. } = &slot.state {
 			return Err(IndexNotReserved);
 		}
-		slot.data = Some(data);
+		if slot.generation != index.generation {
+			return Err(IndexNotReserved);
+		}
+		slot.state = ArenaSlotState::Occupied { data };
 		Ok(())
 	}
 
@@ -183,29 +201,39 @@ impl<T> Arena<T> {
 		// with the wrong generation? currently the answer is
 		// it just returns None like normal
 		let slot = &mut self.slots[index.index];
-		if slot.data.is_none() || slot.generation != index.generation {
+		if slot.generation != index.generation {
 			return None;
 		}
-		slot.generation += 1;
-		self.controller.free(index.index);
-		slot.data.take()
+		let state = std::mem::replace(&mut slot.state, ArenaSlotState::Free);
+		match state {
+			ArenaSlotState::Free => None,
+			ArenaSlotState::Occupied { data } => {
+				slot.generation += 1;
+				self.controller.free(index.index);
+				Some(data)
+			}
+		}
 	}
 
 	pub fn get(&self, index: Index) -> Option<&T> {
 		let slot = &self.slots[index.index];
-		if slot.generation == index.generation {
-			slot.data.as_ref()
-		} else {
-			None
+		if slot.generation != index.generation {
+			return None;
+		}
+		match &slot.state {
+			ArenaSlotState::Free => None,
+			ArenaSlotState::Occupied { data } => Some(data),
 		}
 	}
 
 	pub fn get_mut(&mut self, index: Index) -> Option<&mut T> {
 		let slot = &mut self.slots[index.index];
-		if slot.generation == index.generation {
-			slot.data.as_mut()
-		} else {
-			None
+		if slot.generation != index.generation {
+			return None;
+		}
+		match &mut slot.state {
+			ArenaSlotState::Free => None,
+			ArenaSlotState::Occupied { data } => Some(data),
 		}
 	}
 
@@ -235,7 +263,7 @@ impl<'a, T> Iterator for Iter<'a, T> {
 
 	fn next(&mut self) -> Option<Self::Item> {
 		while let Some((i, slot)) = self.slot_iter.next() {
-			if let Some(data) = &slot.data {
+			if let ArenaSlotState::Occupied { data } = &slot.state {
 				return Some((
 					Index {
 						index: i,
@@ -266,7 +294,7 @@ impl<'a, T> Iterator for IterMut<'a, T> {
 
 	fn next(&mut self) -> Option<Self::Item> {
 		while let Some((i, slot)) = self.slot_iter.next() {
-			if let Some(data) = &mut slot.data {
+			if let ArenaSlotState::Occupied { data } = &mut slot.state {
 				return Some((
 					Index {
 						index: i,

@@ -1,4 +1,4 @@
-use crate::{Arena, ArenaFull, Index, IndexNotReserved};
+use crate::{Arena, ArenaFull, ArenaSlotState, Index, IndexNotReserved};
 
 #[test]
 fn reserve() {
@@ -38,11 +38,11 @@ fn insert_with_index() {
 	assert!(arena.insert_with_index(index1, 1).is_ok());
 	assert!(arena.insert_with_index(index2, 2).is_ok());
 	assert!(arena.insert_with_index(index3, 3).is_ok());
-	assert_eq!(arena.slots[0].data, Some(1));
+	assert_eq!(arena.slots[0].state, ArenaSlotState::Occupied { data: 1 });
 	assert_eq!(arena.slots[0].generation, 0);
-	assert_eq!(arena.slots[1].data, Some(2));
+	assert_eq!(arena.slots[1].state, ArenaSlotState::Occupied { data: 2 });
 	assert_eq!(arena.slots[1].generation, 0);
-	assert_eq!(arena.slots[2].data, Some(3));
+	assert_eq!(arena.slots[2].state, ArenaSlotState::Occupied { data: 3 });
 	assert_eq!(arena.slots[2].generation, 0);
 	assert_eq!(arena.insert_with_index(index1, 4), Err(IndexNotReserved));
 }
@@ -71,11 +71,11 @@ fn insert() {
 			generation: 0,
 		})
 	);
-	assert_eq!(arena.slots[0].data, Some(1));
+	assert_eq!(arena.slots[0].state, ArenaSlotState::Occupied { data: 1 });
 	assert_eq!(arena.slots[0].generation, 0);
-	assert_eq!(arena.slots[1].data, Some(2));
+	assert_eq!(arena.slots[1].state, ArenaSlotState::Occupied { data: 2 });
 	assert_eq!(arena.slots[1].generation, 0);
-	assert_eq!(arena.slots[2].data, Some(3));
+	assert_eq!(arena.slots[2].state, ArenaSlotState::Occupied { data: 3 });
 	assert_eq!(arena.slots[2].generation, 0);
 	assert_eq!(arena.insert(4), Err(ArenaFull));
 }
@@ -97,11 +97,11 @@ fn remove() {
 	assert_eq!(arena.remove(index2), Some(2));
 	// we shouldn't be able to remove it again and get anything back
 	assert_eq!(arena.remove(index1), None);
-	assert_eq!(arena.slots[0].data, None);
+	assert_eq!(arena.slots[0].state, ArenaSlotState::Free);
 	assert_eq!(arena.slots[0].generation, 1);
-	assert_eq!(arena.slots[1].data, None);
+	assert_eq!(arena.slots[1].state, ArenaSlotState::Free);
 	assert_eq!(arena.slots[1].generation, 1);
-	assert_eq!(arena.slots[2].data, None);
+	assert_eq!(arena.slots[2].state, ArenaSlotState::Free);
 	assert_eq!(arena.slots[2].generation, 1);
 	// add 3 more elements
 	let index4 = controller.try_reserve();
