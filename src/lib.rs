@@ -4,7 +4,6 @@ mod test;
 use std::{
 	error::Error,
 	fmt::Display,
-	iter::Enumerate,
 	sync::{
 		atomic::{AtomicBool, AtomicUsize, Ordering},
 		Arc,

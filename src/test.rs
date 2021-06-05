@@ -1,4 +1,4 @@
-use crate::{Arena, ArenaFull, ArenaSlotState, Index, IndexNotReserved};
+use crate::{Arena, ArenaFull, Index, IndexNotReserved};
 
 #[test]
 fn reserve() {
@@ -214,7 +214,7 @@ fn linked_list() {
 		assert_eq!(arena.slots[0].previous_occupied_slot_index(), Some(2));
 		assert_eq!(arena.slots[0].next_occupied_slot_index(), None);
 		assert_eq!(arena.first_occupied_slot_index, Some(2));
-		arena.insert(4);
+		arena.insert(4).unwrap();
 		assert_eq!(arena.slots[1].previous_occupied_slot_index(), None);
 		assert_eq!(arena.slots[1].next_occupied_slot_index(), Some(2));
 		assert_eq!(arena.slots[2].previous_occupied_slot_index(), Some(1));
