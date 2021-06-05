@@ -268,20 +268,20 @@ fn iter() {
 		iter.next(),
 		Some((
 			Index {
-				index: 0,
+				index: 2,
 				generation: 0,
 			},
-			&1
+			&3
 		))
 	);
 	assert_eq!(
 		iter.next(),
 		Some((
 			Index {
-				index: 2,
+				index: 0,
 				generation: 0,
 			},
-			&3
+			&1
 		))
 	);
 	assert_eq!(iter.next(), None);
@@ -303,20 +303,20 @@ fn iter_mut() {
 		iter.next(),
 		Some((
 			Index {
-				index: 0,
+				index: 2,
 				generation: 0,
 			},
-			&mut 1
+			&mut 3
 		))
 	);
 	assert_eq!(
 		iter.next(),
 		Some((
 			Index {
-				index: 2,
+				index: 0,
 				generation: 0,
 			},
-			&mut 3
+			&mut 1
 		))
 	);
 	assert_eq!(iter.next(), None);

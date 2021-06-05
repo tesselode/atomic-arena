@@ -362,13 +362,15 @@ impl<T> Arena<T> {
 }
 
 pub struct Iter<'a, T> {
-	slot_iter: Enumerate<std::slice::Iter<'a, ArenaSlot<T>>>,
+	next_occupied_slot_index: Option<usize>,
+	arena: &'a Arena<T>,
 }
 
 impl<'a, T> Iter<'a, T> {
 	fn new(arena: &'a Arena<T>) -> Self {
 		Self {
-			slot_iter: arena.slots.iter().enumerate(),
+			next_occupied_slot_index: arena.first_occupied_slot_index,
+			arena,
 		}
 	}
 }
@@ -377,29 +379,41 @@ impl<'a, T> Iterator for Iter<'a, T> {
 	type Item = (Index, &'a T);
 
 	fn next(&mut self) -> Option<Self::Item> {
-		while let Some((i, slot)) = self.slot_iter.next() {
-			if let ArenaSlotState::Occupied { data, .. } = &slot.state {
-				return Some((
+		if let Some(index) = self.next_occupied_slot_index {
+			let slot = &self.arena.slots[index];
+			if let ArenaSlotState::Occupied {
+				data,
+				next_occupied_slot_index,
+				..
+			} = &slot.state
+			{
+				self.next_occupied_slot_index = *next_occupied_slot_index;
+				Some((
 					Index {
-						index: i,
+						index,
 						generation: slot.generation,
 					},
 					data,
-				));
+				))
+			} else {
+				panic!("the iterator should not encounter a free slot");
 			}
+		} else {
+			None
 		}
-		None
 	}
 }
 
 pub struct IterMut<'a, T> {
-	slot_iter: Enumerate<std::slice::IterMut<'a, ArenaSlot<T>>>,
+	next_occupied_slot_index: Option<usize>,
+	arena: &'a mut Arena<T>,
 }
 
 impl<'a, T> IterMut<'a, T> {
 	fn new(arena: &'a mut Arena<T>) -> Self {
 		Self {
-			slot_iter: arena.slots.iter_mut().enumerate(),
+			next_occupied_slot_index: arena.first_occupied_slot_index,
+			arena,
 		}
 	}
 }
@@ -408,18 +422,34 @@ impl<'a, T> Iterator for IterMut<'a, T> {
 	type Item = (Index, &'a mut T);
 
 	fn next(&mut self) -> Option<Self::Item> {
-		while let Some((i, slot)) = self.slot_iter.next() {
-			if let ArenaSlotState::Occupied { data, .. } = &mut slot.state {
-				return Some((
+		if let Some(index) = self.next_occupied_slot_index {
+			let slot = &mut self.arena.slots[index];
+			if let ArenaSlotState::Occupied {
+				data,
+				next_occupied_slot_index,
+				..
+			} = &mut slot.state
+			{
+				self.next_occupied_slot_index = *next_occupied_slot_index;
+				Some((
 					Index {
-						index: i,
+						index,
 						generation: slot.generation,
 					},
-					data,
-				));
+					// using a small bit of unsafe code here to get around
+					// borrow checker limitations. this workaround is stolen
+					// from slotmap: https://github.com/orlp/slotmap/blob/master/src/hop.rs#L1165
+					unsafe {
+						let data: *mut T = &mut *data;
+						&mut *data
+					},
+				))
+			} else {
+				panic!("the iterator should not encounter a free slot");
 			}
+		} else {
+			None
 		}
-		None
 	}
 }
 
