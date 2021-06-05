@@ -121,7 +121,11 @@ impl Controller {
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum ArenaSlotState<T> {
 	Free,
-	Occupied { data: T },
+	Occupied {
+		data: T,
+		previous_occupied_slot_index: Option<usize>,
+		next_occupied_slot_index: Option<usize>,
+	},
 }
 
 #[derive(Debug)]
@@ -137,19 +141,91 @@ impl<T> ArenaSlot<T> {
 			generation: 0,
 		}
 	}
+
+	#[cfg(test)]
+	fn is_free(&self) -> bool {
+		if let ArenaSlotState::Free = &self.state {
+			true
+		} else {
+			false
+		}
+	}
+
+	#[cfg(test)]
+	fn previous_occupied_slot_index(&self) -> Option<usize> {
+		if let ArenaSlotState::Occupied {
+			previous_occupied_slot_index,
+			..
+		} = &self.state
+		{
+			*previous_occupied_slot_index
+		} else {
+			None
+		}
+	}
+
+	#[cfg(test)]
+	fn next_occupied_slot_index(&self) -> Option<usize> {
+		if let ArenaSlotState::Occupied {
+			next_occupied_slot_index,
+			..
+		} = &self.state
+		{
+			*next_occupied_slot_index
+		} else {
+			None
+		}
+	}
+
+	fn set_previous_occupied_slot_index(&mut self, index: Option<usize>) {
+		if let ArenaSlotState::Occupied {
+			previous_occupied_slot_index,
+			..
+		} = &mut self.state
+		{
+			*previous_occupied_slot_index = index;
+		} else {
+			panic!("expected a slot to be occupied, but it was not");
+		}
+	}
+
+	fn set_next_occupied_slot_index(&mut self, index: Option<usize>) {
+		if let ArenaSlotState::Occupied {
+			next_occupied_slot_index,
+			..
+		} = &mut self.state
+		{
+			*next_occupied_slot_index = index;
+		} else {
+			panic!("expected a slot to be occupied, but it was not");
+		}
+	}
+}
+
+impl<T: PartialEq> ArenaSlot<T> {
+	#[cfg(test)]
+	fn is_occupied_with_data(&self, intended_data: T) -> bool {
+		if let ArenaSlotState::Occupied { data, .. } = &self.state {
+			*data == intended_data
+		} else {
+			false
+		}
+	}
 }
 
 #[derive(Debug)]
 pub struct Arena<T> {
-	slots: Vec<ArenaSlot<T>>,
 	controller: Controller,
+	slots: Vec<ArenaSlot<T>>,
+	first_occupied_slot_index: Option<usize>,
 }
 
 impl<T> Arena<T> {
 	pub fn new(capacity: usize) -> Self {
 		Self {
-			slots: (0..capacity).map(|_| ArenaSlot::new()).collect(),
 			controller: Controller::new(capacity),
+			slots: (0..capacity).map(|_| ArenaSlot::new()).collect(),
+			first_occupied_slot_index: None,
 		}
 	}
 
@@ -175,14 +251,33 @@ impl<T> Arena<T> {
 	}
 
 	pub fn insert_with_index(&mut self, index: Index, data: T) -> Result<(), IndexNotReserved> {
-		let slot = &mut self.slots[index.index];
-		if let ArenaSlotState::Occupied { .. } = &slot.state {
-			return Err(IndexNotReserved);
+		// make sure the index is reserved
+		{
+			let slot = &mut self.slots[index.index];
+			if let ArenaSlotState::Occupied { .. } = &slot.state {
+				return Err(IndexNotReserved);
+			}
+			if slot.generation != index.generation {
+				return Err(IndexNotReserved);
+			}
 		}
-		if slot.generation != index.generation {
-			return Err(IndexNotReserved);
+
+		// update the previous head to point to the new head
+		// as the previous occupied slot
+		if let Some(head_index) = self.first_occupied_slot_index {
+			self.slots[head_index].set_previous_occupied_slot_index(Some(index.index));
 		}
-		slot.state = ArenaSlotState::Occupied { data };
+
+		// insert the new data
+		self.slots[index.index].state = ArenaSlotState::Occupied {
+			data,
+			previous_occupied_slot_index: None,
+			next_occupied_slot_index: self.first_occupied_slot_index,
+		};
+
+		// update the head
+		self.first_occupied_slot_index = Some(index.index);
+
 		Ok(())
 	}
 
@@ -207,9 +302,29 @@ impl<T> Arena<T> {
 		let state = std::mem::replace(&mut slot.state, ArenaSlotState::Free);
 		match state {
 			ArenaSlotState::Free => None,
-			ArenaSlotState::Occupied { data } => {
+			ArenaSlotState::Occupied {
+				data,
+				previous_occupied_slot_index,
+				next_occupied_slot_index,
+			} => {
 				slot.generation += 1;
 				self.controller.free(index.index);
+
+				// update the pointers of the previous and next slots
+				if let Some(previous_index) = previous_occupied_slot_index {
+					self.slots[previous_index]
+						.set_next_occupied_slot_index(next_occupied_slot_index);
+				}
+				if let Some(next_index) = next_occupied_slot_index {
+					self.slots[next_index]
+						.set_previous_occupied_slot_index(previous_occupied_slot_index);
+				}
+
+				// update the head if needed
+				if self.first_occupied_slot_index.unwrap() == index.index {
+					self.first_occupied_slot_index = next_occupied_slot_index;
+				}
+
 				Some(data)
 			}
 		}
@@ -222,7 +337,7 @@ impl<T> Arena<T> {
 		}
 		match &slot.state {
 			ArenaSlotState::Free => None,
-			ArenaSlotState::Occupied { data } => Some(data),
+			ArenaSlotState::Occupied { data, .. } => Some(data),
 		}
 	}
 
@@ -233,7 +348,7 @@ impl<T> Arena<T> {
 		}
 		match &mut slot.state {
 			ArenaSlotState::Free => None,
-			ArenaSlotState::Occupied { data } => Some(data),
+			ArenaSlotState::Occupied { data, .. } => Some(data),
 		}
 	}
 
@@ -263,7 +378,7 @@ impl<'a, T> Iterator for Iter<'a, T> {
 
 	fn next(&mut self) -> Option<Self::Item> {
 		while let Some((i, slot)) = self.slot_iter.next() {
-			if let ArenaSlotState::Occupied { data } = &slot.state {
+			if let ArenaSlotState::Occupied { data, .. } = &slot.state {
 				return Some((
 					Index {
 						index: i,
@@ -294,7 +409,7 @@ impl<'a, T> Iterator for IterMut<'a, T> {
 
 	fn next(&mut self) -> Option<Self::Item> {
 		while let Some((i, slot)) = self.slot_iter.next() {
-			if let ArenaSlotState::Occupied { data } = &mut slot.state {
+			if let ArenaSlotState::Occupied { data, .. } = &mut slot.state {
 				return Some((
 					Index {
 						index: i,

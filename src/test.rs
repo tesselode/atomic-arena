@@ -38,11 +38,11 @@ fn insert_with_index() {
 	assert!(arena.insert_with_index(index1, 1).is_ok());
 	assert!(arena.insert_with_index(index2, 2).is_ok());
 	assert!(arena.insert_with_index(index3, 3).is_ok());
-	assert_eq!(arena.slots[0].state, ArenaSlotState::Occupied { data: 1 });
+	assert!(arena.slots[0].is_occupied_with_data(1));
 	assert_eq!(arena.slots[0].generation, 0);
-	assert_eq!(arena.slots[1].state, ArenaSlotState::Occupied { data: 2 });
+	assert!(arena.slots[1].is_occupied_with_data(2));
 	assert_eq!(arena.slots[1].generation, 0);
-	assert_eq!(arena.slots[2].state, ArenaSlotState::Occupied { data: 3 });
+	assert!(arena.slots[2].is_occupied_with_data(3));
 	assert_eq!(arena.slots[2].generation, 0);
 	assert_eq!(arena.insert_with_index(index1, 4), Err(IndexNotReserved));
 }
@@ -71,11 +71,11 @@ fn insert() {
 			generation: 0,
 		})
 	);
-	assert_eq!(arena.slots[0].state, ArenaSlotState::Occupied { data: 1 });
+	assert!(arena.slots[0].is_occupied_with_data(1));
 	assert_eq!(arena.slots[0].generation, 0);
-	assert_eq!(arena.slots[1].state, ArenaSlotState::Occupied { data: 2 });
+	assert!(arena.slots[1].is_occupied_with_data(2));
 	assert_eq!(arena.slots[1].generation, 0);
-	assert_eq!(arena.slots[2].state, ArenaSlotState::Occupied { data: 3 });
+	assert!(arena.slots[2].is_occupied_with_data(3));
 	assert_eq!(arena.slots[2].generation, 0);
 	assert_eq!(arena.insert(4), Err(ArenaFull));
 }
@@ -97,11 +97,11 @@ fn remove() {
 	assert_eq!(arena.remove(index2), Some(2));
 	// we shouldn't be able to remove it again and get anything back
 	assert_eq!(arena.remove(index1), None);
-	assert_eq!(arena.slots[0].state, ArenaSlotState::Free);
+	assert!(arena.slots[0].is_free());
 	assert_eq!(arena.slots[0].generation, 1);
-	assert_eq!(arena.slots[1].state, ArenaSlotState::Free);
+	assert!(arena.slots[1].is_free());
 	assert_eq!(arena.slots[1].generation, 1);
-	assert_eq!(arena.slots[2].state, ArenaSlotState::Free);
+	assert!(arena.slots[2].is_free());
 	assert_eq!(arena.slots[2].generation, 1);
 	// add 3 more elements
 	let index4 = controller.try_reserve();
@@ -189,6 +189,67 @@ fn capacity() {
 	assert_eq!(arena.capacity(), 3);
 	arena.remove(index1);
 	assert_eq!(arena.capacity(), 3);
+}
+
+#[test]
+fn linked_list() {
+	// test 1: remove 1, insert 1
+	// the intent here is to make sure new elements are always
+	// inserted before every other element.
+	{
+		let mut arena = Arena::new(3);
+		arena.insert(1).unwrap();
+		let index2 = arena.insert(2).unwrap();
+		arena.insert(3).unwrap();
+		assert_eq!(arena.slots[2].previous_occupied_slot_index(), None);
+		assert_eq!(arena.slots[2].next_occupied_slot_index(), Some(1));
+		assert_eq!(arena.slots[1].previous_occupied_slot_index(), Some(2));
+		assert_eq!(arena.slots[1].next_occupied_slot_index(), Some(0));
+		assert_eq!(arena.slots[0].previous_occupied_slot_index(), Some(1));
+		assert_eq!(arena.slots[0].next_occupied_slot_index(), None);
+		assert_eq!(arena.first_occupied_slot_index, Some(2));
+		arena.remove(index2);
+		assert_eq!(arena.slots[2].previous_occupied_slot_index(), None);
+		assert_eq!(arena.slots[2].next_occupied_slot_index(), Some(0));
+		assert_eq!(arena.slots[0].previous_occupied_slot_index(), Some(2));
+		assert_eq!(arena.slots[0].next_occupied_slot_index(), None);
+		assert_eq!(arena.first_occupied_slot_index, Some(2));
+		arena.insert(4);
+		assert_eq!(arena.slots[1].previous_occupied_slot_index(), None);
+		assert_eq!(arena.slots[1].next_occupied_slot_index(), Some(2));
+		assert_eq!(arena.slots[2].previous_occupied_slot_index(), Some(1));
+		assert_eq!(arena.slots[2].next_occupied_slot_index(), Some(0));
+		assert_eq!(arena.slots[0].previous_occupied_slot_index(), Some(2));
+		assert_eq!(arena.slots[0].next_occupied_slot_index(), None);
+		assert_eq!(arena.first_occupied_slot_index, Some(1));
+	}
+
+	// test 2: remove 2
+	// the intent here is to make sure indices get set to
+	// None when they're supposed to.
+	{
+		let mut arena = Arena::new(3);
+		arena.insert(1).unwrap();
+		let index2 = arena.insert(2).unwrap();
+		let index3 = arena.insert(3).unwrap();
+		assert_eq!(arena.slots[2].previous_occupied_slot_index(), None);
+		assert_eq!(arena.slots[2].next_occupied_slot_index(), Some(1));
+		assert_eq!(arena.slots[1].previous_occupied_slot_index(), Some(2));
+		assert_eq!(arena.slots[1].next_occupied_slot_index(), Some(0));
+		assert_eq!(arena.slots[0].previous_occupied_slot_index(), Some(1));
+		assert_eq!(arena.slots[0].next_occupied_slot_index(), None);
+		assert_eq!(arena.first_occupied_slot_index, Some(2));
+		arena.remove(index2);
+		assert_eq!(arena.slots[2].previous_occupied_slot_index(), None);
+		assert_eq!(arena.slots[2].next_occupied_slot_index(), Some(0));
+		assert_eq!(arena.slots[0].previous_occupied_slot_index(), Some(2));
+		assert_eq!(arena.slots[0].next_occupied_slot_index(), None);
+		assert_eq!(arena.first_occupied_slot_index, Some(2));
+		arena.remove(index3);
+		assert_eq!(arena.slots[0].previous_occupied_slot_index(), None);
+		assert_eq!(arena.slots[0].next_occupied_slot_index(), None);
+		assert_eq!(arena.first_occupied_slot_index, Some(0));
+	}
 }
 
 #[test]
