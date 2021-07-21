@@ -10,8 +10,16 @@ use std::{
 	},
 };
 
+/// Represents that a [`ControllerSlot`] does not have a free slot
+/// after it.
+///
+/// This is used because the next free slot variable is an
+/// [`AtomicUsize`], but we still need some way to represent the
+/// absence of a next free slot.
 const NO_NEXT_FREE_SLOT: usize = usize::MAX;
 
+/// An error that's returned when trying to reserve an index
+/// on an [`Arena`] that's full.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ArenaFull;
 
@@ -23,6 +31,8 @@ impl Display for ArenaFull {
 
 impl Error for ArenaFull {}
 
+/// An error that's returned when trying to insert into an
+/// [`Arena`] with an index that hasn't been reserved.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct IndexNotReserved;
 
@@ -34,6 +44,7 @@ impl Display for IndexNotReserved {
 
 impl Error for IndexNotReserved {}
 
+/// A unique identifier for an item in an [`Arena`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Index {
 	index: usize,
@@ -47,6 +58,7 @@ struct ControllerSlot {
 	next_free_slot_index: AtomicUsize,
 }
 
+/// The shared state for all [`Controller`]s for an [`Arena`].
 #[derive(Debug)]
 struct ControllerInner {
 	slots: Vec<ControllerSlot>,
@@ -100,6 +112,7 @@ impl ControllerInner {
 	}
 }
 
+/// Manages [`Index`] reservations for an [`Arena`].
 #[derive(Debug, Clone)]
 pub struct Controller(Arc<ControllerInner>);
 
@@ -108,6 +121,7 @@ impl Controller {
 		Self(Arc::new(ControllerInner::new(capacity)))
 	}
 
+	/// Tries to reserve an index for the [`Arena`].
 	pub fn try_reserve(&self) -> Result<Index, ArenaFull> {
 		self.0.try_reserve()
 	}
@@ -212,6 +226,7 @@ impl<T: PartialEq> ArenaSlot<T> {
 	}
 }
 
+/// A container of items that can be accessed via an [`Index`].
 #[derive(Debug)]
 pub struct Arena<T> {
 	controller: Controller,
@@ -220,6 +235,8 @@ pub struct Arena<T> {
 }
 
 impl<T> Arena<T> {
+	/// Creates a new [`Arena`] with enough space for `capacity`
+	/// number of items.
 	pub fn new(capacity: usize) -> Self {
 		Self {
 			controller: Controller::new(capacity),
@@ -228,14 +245,17 @@ impl<T> Arena<T> {
 		}
 	}
 
+	/// Returns a [`Controller`] for this [`Arena`].
 	pub fn controller(&self) -> Controller {
 		self.controller.clone()
 	}
 
+	/// Returns the total capacity for this [`Arena`].
 	pub fn capacity(&self) -> usize {
 		self.slots.len()
 	}
 
+	/// Returns the number of items currently in the [`Arena`].
 	pub fn len(&self) -> usize {
 		self.slots
 			.iter()
@@ -249,6 +269,8 @@ impl<T> Arena<T> {
 			.count()
 	}
 
+	/// Tries to insert an item into the [`Arena`] with a previously
+	/// reserved [`Index`].
 	pub fn insert_with_index(&mut self, index: Index, data: T) -> Result<(), IndexNotReserved> {
 		// make sure the index is reserved
 		{
@@ -280,12 +302,18 @@ impl<T> Arena<T> {
 		Ok(())
 	}
 
+	/// Tries to reserve an [`Index`], and, if successful, inserts
+	/// an item into the [`Arena`] with that [`Index`] and
+	/// returns the [`Index`].
 	pub fn insert(&mut self, data: T) -> Result<Index, ArenaFull> {
 		let index = self.controller.try_reserve()?;
 		self.insert_with_index(index, data).unwrap();
 		Ok(index)
 	}
 
+	/// If the [`Arena`] contains an item with the given [`Index`],
+	/// removes it from the [`Arena`] and returns `Some(item)`.
+	/// Otherwise, returns `None`.
 	pub fn remove(&mut self, index: Index) -> Option<T> {
 		// TODO: answer the following questions:
 		// - if you reserve a key, then try to remove the key
@@ -319,7 +347,12 @@ impl<T> Arena<T> {
 						.set_previous_occupied_slot_index(previous_occupied_slot_index);
 				}
 
-				// update the head if needed
+				// update the head if needed.
+				//
+				// `first_occupied_slot_index` should always be `Some` in this case,
+				// because this branch of the `match` is only taken if the slot is
+				// occupied, and if any slots are occupied, `first_occupied_slot_index`
+				// should be `Some`. if not, there's a major bug that needs addressing.
 				if self.first_occupied_slot_index.unwrap() == index.index {
 					self.first_occupied_slot_index = next_occupied_slot_index;
 				}
@@ -329,6 +362,8 @@ impl<T> Arena<T> {
 		}
 	}
 
+	/// Returns a shared reference to the item in the [`Arena`] with
+	/// the given [`Index`] if it exists. Otherwise, returns `None`.
 	pub fn get(&self, index: Index) -> Option<&T> {
 		let slot = &self.slots[index.index];
 		if slot.generation != index.generation {
@@ -340,6 +375,8 @@ impl<T> Arena<T> {
 		}
 	}
 
+	/// Returns a mutable reference to the item in the [`Arena`] with
+	/// the given [`Index`] if it exists. Otherwise, returns `None`.
 	pub fn get_mut(&mut self, index: Index) -> Option<&mut T> {
 		let slot = &mut self.slots[index.index];
 		if slot.generation != index.generation {
@@ -351,15 +388,27 @@ impl<T> Arena<T> {
 		}
 	}
 
+	/// Returns an iterator over shared references to the items in
+	/// the [`Arena`].
+	///
+	/// The most recently added items will be visited first.
 	pub fn iter(&self) -> Iter<T> {
 		Iter::new(self)
 	}
 
+	/// Returns an iterator over mutable references to the items in
+	/// the [`Arena`].
+	///
+	/// The most recently added items will be visited first.
 	pub fn iter_mut(&mut self) -> IterMut<T> {
 		IterMut::new(self)
 	}
 }
 
+/// Iterates over shared references to the items in
+/// the [`Arena`].
+///
+/// The most recently added items will be visited first.
 pub struct Iter<'a, T> {
 	next_occupied_slot_index: Option<usize>,
 	arena: &'a Arena<T>,
@@ -403,6 +452,10 @@ impl<'a, T> Iterator for Iter<'a, T> {
 	}
 }
 
+/// Iterates over mutable references to the items in
+/// the [`Arena`].
+///
+/// The most recently added items will be visited first.
 pub struct IterMut<'a, T> {
 	next_occupied_slot_index: Option<usize>,
 	arena: &'a mut Arena<T>,
