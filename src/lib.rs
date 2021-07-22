@@ -1,3 +1,14 @@
+/*!
+`atomic_arena` provides a generational [`Arena`] that you can reserve
+an [`Index`] for ahead of time using a [`Controller`]. [`Controller`]s
+are backed by atomics, so they can be cloned and used across threads
+and still have consistent state.
+
+This is useful when you want to insert an item into an [`Arena`] on
+a different thread, but you want to have a valid [`Index`] for that
+item immediately on the current thread.
+*/
+
 #[cfg(test)]
 mod test;
 
