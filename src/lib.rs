@@ -9,232 +9,23 @@ a different thread, but you want to have a valid [`Index`] for that
 item immediately on the current thread.
 */
 
+mod controller;
+pub mod error;
+mod slot;
+
 #[cfg(test)]
 mod test;
 
-use std::{
-	error::Error,
-	fmt::Display,
-	sync::{
-		atomic::{AtomicBool, AtomicUsize, Ordering},
-		Arc,
-	},
-};
+pub use controller::Controller;
 
-/// Represents that a [`ControllerSlot`] does not have a free slot
-/// after it.
-///
-/// This is used because the next free slot variable is an
-/// [`AtomicUsize`], but we still need some way to represent the
-/// absence of a next free slot.
-const NO_NEXT_FREE_SLOT: usize = usize::MAX;
-
-/// An error that's returned when trying to reserve an index
-/// on an [`Arena`] that's full.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct ArenaFull;
-
-impl Display for ArenaFull {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		f.write_str("Cannot reserve an index because the arena is full")
-	}
-}
-
-impl Error for ArenaFull {}
-
-/// An error that's returned when trying to insert into an
-/// [`Arena`] with an index that hasn't been reserved.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct IndexNotReserved;
-
-impl Display for IndexNotReserved {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		f.write_str("Cannot insert with this index because it is not reserved")
-	}
-}
-
-impl Error for IndexNotReserved {}
+use error::{ArenaFull, IndexNotReserved};
+use slot::{ArenaSlot, ArenaSlotState};
 
 /// A unique identifier for an item in an [`Arena`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Index {
 	index: usize,
 	generation: usize,
-}
-
-#[derive(Debug)]
-struct ControllerSlot {
-	free: AtomicBool,
-	generation: AtomicUsize,
-	next_free_slot_index: AtomicUsize,
-}
-
-/// The shared state for all [`Controller`]s for an [`Arena`].
-#[derive(Debug)]
-struct ControllerInner {
-	slots: Vec<ControllerSlot>,
-	first_free_slot_index: AtomicUsize,
-}
-
-impl ControllerInner {
-	fn new(capacity: usize) -> Self {
-		Self {
-			slots: (0..capacity)
-				.map(|i| ControllerSlot {
-					free: AtomicBool::new(true),
-					generation: AtomicUsize::new(0),
-					next_free_slot_index: AtomicUsize::new(if i < capacity - 1 {
-						i + 1
-					} else {
-						NO_NEXT_FREE_SLOT
-					}),
-				})
-				.collect(),
-			first_free_slot_index: AtomicUsize::new(0),
-		}
-	}
-
-	fn try_reserve(&self) -> Result<Index, ArenaFull> {
-		let first_free_slot_index = self.first_free_slot_index.load(Ordering::SeqCst);
-		if first_free_slot_index == NO_NEXT_FREE_SLOT {
-			return Err(ArenaFull);
-		}
-		let slot = &self.slots[first_free_slot_index];
-		slot.free.store(false, Ordering::SeqCst);
-		self.first_free_slot_index.store(
-			slot.next_free_slot_index.load(Ordering::SeqCst),
-			Ordering::SeqCst,
-		);
-		Ok(Index {
-			index: first_free_slot_index,
-			generation: slot.generation.load(Ordering::SeqCst),
-		})
-	}
-
-	fn free(&self, index: usize) {
-		let slot = &self.slots[index];
-		slot.free.store(true, Ordering::SeqCst);
-		slot.generation.fetch_add(1, Ordering::SeqCst);
-		slot.next_free_slot_index.store(
-			self.first_free_slot_index.load(Ordering::SeqCst),
-			Ordering::SeqCst,
-		);
-		self.first_free_slot_index.store(index, Ordering::SeqCst);
-	}
-}
-
-/// Manages [`Index`] reservations for an [`Arena`].
-#[derive(Debug, Clone)]
-pub struct Controller(Arc<ControllerInner>);
-
-impl Controller {
-	fn new(capacity: usize) -> Self {
-		Self(Arc::new(ControllerInner::new(capacity)))
-	}
-
-	/// Tries to reserve an index for the [`Arena`].
-	pub fn try_reserve(&self) -> Result<Index, ArenaFull> {
-		self.0.try_reserve()
-	}
-
-	fn free(&self, index: usize) {
-		self.0.free(index);
-	}
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum ArenaSlotState<T> {
-	Free,
-	Occupied {
-		data: T,
-		previous_occupied_slot_index: Option<usize>,
-		next_occupied_slot_index: Option<usize>,
-	},
-}
-
-#[derive(Debug)]
-struct ArenaSlot<T> {
-	state: ArenaSlotState<T>,
-	generation: usize,
-}
-
-impl<T> ArenaSlot<T> {
-	pub fn new() -> Self {
-		Self {
-			state: ArenaSlotState::Free,
-			generation: 0,
-		}
-	}
-
-	#[cfg(test)]
-	fn is_free(&self) -> bool {
-		if let ArenaSlotState::Free = &self.state {
-			true
-		} else {
-			false
-		}
-	}
-
-	#[cfg(test)]
-	fn previous_occupied_slot_index(&self) -> Option<usize> {
-		if let ArenaSlotState::Occupied {
-			previous_occupied_slot_index,
-			..
-		} = &self.state
-		{
-			*previous_occupied_slot_index
-		} else {
-			None
-		}
-	}
-
-	#[cfg(test)]
-	fn next_occupied_slot_index(&self) -> Option<usize> {
-		if let ArenaSlotState::Occupied {
-			next_occupied_slot_index,
-			..
-		} = &self.state
-		{
-			*next_occupied_slot_index
-		} else {
-			None
-		}
-	}
-
-	fn set_previous_occupied_slot_index(&mut self, index: Option<usize>) {
-		if let ArenaSlotState::Occupied {
-			previous_occupied_slot_index,
-			..
-		} = &mut self.state
-		{
-			*previous_occupied_slot_index = index;
-		} else {
-			panic!("expected a slot to be occupied, but it was not");
-		}
-	}
-
-	fn set_next_occupied_slot_index(&mut self, index: Option<usize>) {
-		if let ArenaSlotState::Occupied {
-			next_occupied_slot_index,
-			..
-		} = &mut self.state
-		{
-			*next_occupied_slot_index = index;
-		} else {
-			panic!("expected a slot to be occupied, but it was not");
-		}
-	}
-}
-
-impl<T: PartialEq> ArenaSlot<T> {
-	#[cfg(test)]
-	fn is_occupied_with_data(&self, intended_data: T) -> bool {
-		if let ArenaSlotState::Occupied { data, .. } = &self.state {
-			*data == intended_data
-		} else {
-			false
-		}
-	}
 }
 
 /// A container of items that can be accessed via an [`Index`].
