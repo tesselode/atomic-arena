@@ -22,41 +22,6 @@ impl<T> ArenaSlot<T> {
 		}
 	}
 
-	#[cfg(test)]
-	pub(crate) fn is_free(&self) -> bool {
-		if let ArenaSlotState::Free = &self.state {
-			true
-		} else {
-			false
-		}
-	}
-
-	#[cfg(test)]
-	pub(crate) fn previous_occupied_slot_index(&self) -> Option<usize> {
-		if let ArenaSlotState::Occupied {
-			previous_occupied_slot_index,
-			..
-		} = &self.state
-		{
-			*previous_occupied_slot_index
-		} else {
-			None
-		}
-	}
-
-	#[cfg(test)]
-	pub(crate) fn next_occupied_slot_index(&self) -> Option<usize> {
-		if let ArenaSlotState::Occupied {
-			next_occupied_slot_index,
-			..
-		} = &self.state
-		{
-			*next_occupied_slot_index
-		} else {
-			None
-		}
-	}
-
 	pub(crate) fn set_previous_occupied_slot_index(&mut self, index: Option<usize>) {
 		if let ArenaSlotState::Occupied {
 			previous_occupied_slot_index,
@@ -78,17 +43,6 @@ impl<T> ArenaSlot<T> {
 			*next_occupied_slot_index = index;
 		} else {
 			panic!("expected a slot to be occupied, but it was not");
-		}
-	}
-}
-
-impl<T: PartialEq> ArenaSlot<T> {
-	#[cfg(test)]
-	pub(crate) fn is_occupied_with_data(&self, intended_data: T) -> bool {
-		if let ArenaSlotState::Occupied { data, .. } = &self.state {
-			*data == intended_data
-		} else {
-			false
 		}
 	}
 }
