@@ -113,21 +113,8 @@ impl<T> Arena<T> {
 		Ok(index)
 	}
 
-	/// If the [`Arena`] contains an item with the given [`Index`],
-	/// removes it from the [`Arena`] and returns `Some(item)`.
-	/// Otherwise, returns `None`.
-	pub fn remove(&mut self, index: Index) -> Option<T> {
-		// TODO: answer the following questions:
-		// - if you reserve a key, then try to remove the key
-		// without having inserted anything, should the slot
-		// be unreserved? the current answer is no
-		// - what should happen if you try to remove a slot
-		// with the wrong generation? currently the answer is
-		// it just returns None like normal
-		let slot = &mut self.slots[index.index];
-		if slot.generation != index.generation {
-			return None;
-		}
+	fn remove_at_raw_index(&mut self, index: usize) -> Option<T> {
+		let slot = &mut self.slots[index];
 		let state = std::mem::replace(&mut slot.state, ArenaSlotState::Free);
 		match state {
 			ArenaSlotState::Free => None,
@@ -137,7 +124,7 @@ impl<T> Arena<T> {
 				next_occupied_slot_index,
 			} => {
 				slot.generation += 1;
-				self.controller.free(index.index);
+				self.controller.free(index);
 
 				// update the pointers of the previous and next slots
 				if let Some(previous_index) = previous_occupied_slot_index {
@@ -155,13 +142,31 @@ impl<T> Arena<T> {
 				// because this branch of the `match` is only taken if the slot is
 				// occupied, and if any slots are occupied, `first_occupied_slot_index`
 				// should be `Some`. if not, there's a major bug that needs addressing.
-				if self.first_occupied_slot_index.unwrap() == index.index {
+				if self.first_occupied_slot_index.unwrap() == index {
 					self.first_occupied_slot_index = next_occupied_slot_index;
 				}
 
 				Some(data)
 			}
 		}
+	}
+
+	/// If the [`Arena`] contains an item with the given [`Index`],
+	/// removes it from the [`Arena`] and returns `Some(item)`.
+	/// Otherwise, returns `None`.
+	pub fn remove(&mut self, index: Index) -> Option<T> {
+		// TODO: answer the following questions:
+		// - if you reserve a key, then try to remove the key
+		// without having inserted anything, should the slot
+		// be unreserved? the current answer is no
+		// - what should happen if you try to remove a slot
+		// with the wrong generation? currently the answer is
+		// it just returns None like normal
+		let slot = &mut self.slots[index.index];
+		if slot.generation != index.generation {
+			return None;
+		}
+		self.remove_at_raw_index(index.index)
 	}
 
 	/// Returns a shared reference to the item in the [`Arena`] with
@@ -187,6 +192,38 @@ impl<T> Arena<T> {
 		match &mut slot.state {
 			ArenaSlotState::Free => None,
 			ArenaSlotState::Occupied { data, .. } => Some(data),
+		}
+	}
+
+	/// Retains only the elements specified by the predicate.
+	///
+	/// In other words, remove all elements e such that f(&e) returns false.
+	pub fn retain(&mut self, mut f: impl FnMut(&T) -> bool) {
+		let mut index = match self.first_occupied_slot_index {
+			Some(index) => index,
+			None => return,
+		};
+		loop {
+			if let ArenaSlotState::Occupied {
+				data,
+				next_occupied_slot_index,
+				..
+			} = &self.slots[index].state
+			{
+				let next_occupied_slot_index = match next_occupied_slot_index {
+					Some(index) => Some(*index),
+					None => None,
+				};
+				if !f(data) {
+					self.remove_at_raw_index(index);
+				}
+				index = match next_occupied_slot_index {
+					Some(index) => index,
+					None => return,
+				}
+			} else {
+				panic!("expected the slot pointed to by first_occupied_slot_index/next_occupied_slot_index to be occupied")
+			}
 		}
 	}
 
