@@ -9,8 +9,11 @@ a different thread, but you want to have a valid [`Index`] for that
 item immediately on the current thread.
 */
 
+#![warn(missing_docs)]
+
 mod controller;
 pub mod error;
+pub mod iter;
 mod slot;
 
 #[cfg(test)]
@@ -19,6 +22,7 @@ mod test;
 pub use controller::Controller;
 
 use error::{ArenaFull, IndexNotReserved};
+use iter::{DrainFilter, Iter, IterMut};
 use slot::{ArenaSlot, ArenaSlotState};
 
 /// A unique identifier for an item in an [`Arena`].
@@ -250,106 +254,6 @@ impl<T> Arena<T> {
 	}
 }
 
-/// Iterates over shared references to the items in
-/// the [`Arena`].
-///
-/// The most recently added items will be visited first.
-pub struct Iter<'a, T> {
-	next_occupied_slot_index: Option<usize>,
-	arena: &'a Arena<T>,
-}
-
-impl<'a, T> Iter<'a, T> {
-	fn new(arena: &'a Arena<T>) -> Self {
-		Self {
-			next_occupied_slot_index: arena.first_occupied_slot_index,
-			arena,
-		}
-	}
-}
-
-impl<'a, T> Iterator for Iter<'a, T> {
-	type Item = (Index, &'a T);
-
-	fn next(&mut self) -> Option<Self::Item> {
-		if let Some(index) = self.next_occupied_slot_index {
-			let slot = &self.arena.slots[index];
-			if let ArenaSlotState::Occupied {
-				data,
-				next_occupied_slot_index,
-				..
-			} = &slot.state
-			{
-				self.next_occupied_slot_index = *next_occupied_slot_index;
-				Some((
-					Index {
-						index,
-						generation: slot.generation,
-					},
-					data,
-				))
-			} else {
-				panic!("the iterator should not encounter a free slot");
-			}
-		} else {
-			None
-		}
-	}
-}
-
-/// Iterates over mutable references to the items in
-/// the [`Arena`].
-///
-/// The most recently added items will be visited first.
-pub struct IterMut<'a, T> {
-	next_occupied_slot_index: Option<usize>,
-	arena: &'a mut Arena<T>,
-}
-
-impl<'a, T> IterMut<'a, T> {
-	fn new(arena: &'a mut Arena<T>) -> Self {
-		Self {
-			next_occupied_slot_index: arena.first_occupied_slot_index,
-			arena,
-		}
-	}
-}
-
-impl<'a, T> Iterator for IterMut<'a, T> {
-	type Item = (Index, &'a mut T);
-
-	fn next(&mut self) -> Option<Self::Item> {
-		if let Some(index) = self.next_occupied_slot_index {
-			let slot = &mut self.arena.slots[index];
-			if let ArenaSlotState::Occupied {
-				data,
-				next_occupied_slot_index,
-				..
-			} = &mut slot.state
-			{
-				self.next_occupied_slot_index = *next_occupied_slot_index;
-				Some((
-					Index {
-						index,
-						generation: slot.generation,
-					},
-					// using a small bit of unsafe code here to get around
-					// borrow checker limitations. this workaround is stolen
-					// from slotmap: https://github.com/orlp/slotmap/blob/master/src/hop.rs#L1165
-					unsafe {
-						let data: *mut T = &mut *data;
-						&mut *data
-					},
-				))
-			} else {
-				panic!("the iterator should not encounter a free slot");
-			}
-		} else {
-			None
-		}
-	}
-}
-
 impl<'a, T> IntoIterator for &'a Arena<T> {
 	type Item = (Index, &'a T);
 
@@ -367,54 +271,5 @@ impl<'a, T> IntoIterator for &'a mut Arena<T> {
 
 	fn into_iter(self) -> Self::IntoIter {
 		self.iter_mut()
-	}
-}
-
-/// An iterator that removes and yields elements from an
-/// [`Arena`] according to a filter function.
-pub struct DrainFilter<'a, T, F: FnMut(&T) -> bool> {
-	arena: &'a mut Arena<T>,
-	filter: F,
-	next_occupied_slot_index: Option<usize>,
-}
-
-impl<'a, T, F: FnMut(&T) -> bool> DrainFilter<'a, T, F> {
-	fn new(arena: &'a mut Arena<T>, filter: F) -> Self {
-		Self {
-			next_occupied_slot_index: arena.first_occupied_slot_index,
-			arena,
-			filter,
-		}
-	}
-}
-
-impl<'a, T, F: FnMut(&T) -> bool> Iterator for DrainFilter<'a, T, F> {
-	type Item = (Index, T);
-
-	fn next(&mut self) -> Option<Self::Item> {
-		while let Some(raw_index) = self.next_occupied_slot_index {
-			let slot = &mut self.arena.slots[raw_index];
-			if let ArenaSlotState::Occupied {
-				data,
-				next_occupied_slot_index,
-				..
-			} = &mut slot.state
-			{
-				self.next_occupied_slot_index = *next_occupied_slot_index;
-				if (self.filter)(&data) {
-					let index = Index {
-						index: raw_index,
-						generation: slot.generation,
-					};
-					return self
-						.arena
-						.remove_at_raw_index(raw_index)
-						.map(|element| (index, element));
-				}
-			} else {
-				panic!("the iterator should not encounter a free slot");
-			}
-		}
-		None
 	}
 }
