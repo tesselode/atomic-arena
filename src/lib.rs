@@ -254,6 +254,21 @@ impl<T> Arena<T> {
 	}
 }
 
+impl<T> std::ops::Index<Index> for Arena<T> {
+	type Output = T;
+
+	fn index(&self, index: Index) -> &Self::Output {
+		self.get(index).expect("No item associated with this index")
+	}
+}
+
+impl<T> std::ops::IndexMut<Index> for Arena<T> {
+	fn index_mut(&mut self, index: Index) -> &mut Self::Output {
+		self.get_mut(index)
+			.expect("No item associated with this index")
+	}
+}
+
 impl<'a, T> IntoIterator for &'a Arena<T> {
 	type Item = (Index, &'a T);
 
