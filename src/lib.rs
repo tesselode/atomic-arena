@@ -242,6 +242,12 @@ impl<T> Arena<T> {
 	pub fn iter_mut(&mut self) -> IterMut<T> {
 		IterMut::new(self)
 	}
+
+	/// Returns an iterator that removes and yields all elements
+	/// for which `filter(&element)` returns `true`.
+	pub fn drain_filter<F: FnMut(&T) -> bool>(&mut self, filter: F) -> DrainFilter<T, F> {
+		DrainFilter::new(self, filter)
+	}
 }
 
 /// Iterates over shared references to the items in
@@ -361,5 +367,54 @@ impl<'a, T> IntoIterator for &'a mut Arena<T> {
 
 	fn into_iter(self) -> Self::IntoIter {
 		self.iter_mut()
+	}
+}
+
+/// An iterator that removes and yields elements from an
+/// [`Arena`] according to a filter function.
+pub struct DrainFilter<'a, T, F: FnMut(&T) -> bool> {
+	arena: &'a mut Arena<T>,
+	filter: F,
+	next_occupied_slot_index: Option<usize>,
+}
+
+impl<'a, T, F: FnMut(&T) -> bool> DrainFilter<'a, T, F> {
+	fn new(arena: &'a mut Arena<T>, filter: F) -> Self {
+		Self {
+			next_occupied_slot_index: arena.first_occupied_slot_index,
+			arena,
+			filter,
+		}
+	}
+}
+
+impl<'a, T, F: FnMut(&T) -> bool> Iterator for DrainFilter<'a, T, F> {
+	type Item = (Index, T);
+
+	fn next(&mut self) -> Option<Self::Item> {
+		while let Some(raw_index) = self.next_occupied_slot_index {
+			let slot = &mut self.arena.slots[raw_index];
+			if let ArenaSlotState::Occupied {
+				data,
+				next_occupied_slot_index,
+				..
+			} = &mut slot.state
+			{
+				self.next_occupied_slot_index = *next_occupied_slot_index;
+				if (self.filter)(&data) {
+					let index = Index {
+						index: raw_index,
+						generation: slot.generation,
+					};
+					return self
+						.arena
+						.remove_at_raw_index(raw_index)
+						.map(|element| (index, element));
+				}
+			} else {
+				panic!("the iterator should not encounter a free slot");
+			}
+		}
+		None
 	}
 }

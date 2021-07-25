@@ -204,3 +204,26 @@ fn iter_mut() {
 	assert_eq!(iter.next(), Some((index1, &mut 1)));
 	assert_eq!(iter.next(), None);
 }
+
+#[test]
+fn drain_filter() {
+	let mut arena = Arena::new(6);
+	let index1 = arena.insert(1).unwrap();
+	let index2 = arena.insert(2).unwrap();
+	let index3 = arena.insert(3).unwrap();
+	let index4 = arena.insert(4).unwrap();
+	let index5 = arena.insert(5).unwrap();
+	let index6 = arena.insert(6).unwrap();
+	let mut iter = arena.drain_filter(|num| num % 2 == 0);
+	assert_eq!(iter.next(), Some((index6, 6)));
+	assert_eq!(iter.next(), Some((index4, 4)));
+	assert_eq!(iter.next(), Some((index2, 2)));
+	assert_eq!(iter.next(), None);
+	assert_eq!(arena.len(), 3);
+	assert_eq!(arena.get(index1), Some(&1));
+	assert_eq!(arena.get(index2), None);
+	assert_eq!(arena.get(index3), Some(&3));
+	assert_eq!(arena.get(index4), None);
+	assert_eq!(arena.get(index5), Some(&5));
+	assert_eq!(arena.get(index6), None);
+}
