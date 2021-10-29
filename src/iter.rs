@@ -133,7 +133,7 @@ impl<'a, T, F: FnMut(&T) -> bool> Iterator for DrainFilter<'a, T, F> {
 			} = &mut slot.state
 			{
 				self.next_occupied_slot_index = *next_occupied_slot_index;
-				if (self.filter)(&data) {
+				if (self.filter)(data) {
 					let index = Index {
 						index: raw_index,
 						generation: slot.generation,

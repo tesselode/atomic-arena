@@ -65,14 +65,13 @@ impl<T> Arena<T> {
 	pub fn len(&self) -> usize {
 		self.slots
 			.iter()
-			.filter(|slot| {
-				if let ArenaSlotState::Occupied { .. } = &slot.state {
-					true
-				} else {
-					false
-				}
-			})
+			.filter(|slot| matches!(&slot.state, ArenaSlotState::Occupied { .. }))
 			.count()
+	}
+
+	/// Returns `true` if the [`Arena`] is currently empty.
+	pub fn is_empty(&self) -> bool {
+		self.len() == 0
 	}
 
 	/// Tries to insert an item into the [`Arena`] with a previously
@@ -214,10 +213,7 @@ impl<T> Arena<T> {
 				..
 			} = &self.slots[index].state
 			{
-				let next_occupied_slot_index = match next_occupied_slot_index {
-					Some(index) => Some(*index),
-					None => None,
-				};
+				let next_occupied_slot_index = next_occupied_slot_index.as_ref().copied();
 				if !f(data) {
 					self.remove_at_raw_index(index);
 				}
