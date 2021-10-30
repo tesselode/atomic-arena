@@ -1,6 +1,6 @@
 //! [`Arena`] iterators.
 
-use crate::{slot::ArenaSlotState, Arena, Index};
+use crate::{slot::ArenaSlotState, Arena, Key};
 
 /// Iterates over shared references to the items in
 /// the [`Arena`].
@@ -21,7 +21,7 @@ impl<'a, T> Iter<'a, T> {
 }
 
 impl<'a, T> Iterator for Iter<'a, T> {
-	type Item = (Index, &'a T);
+	type Item = (Key, &'a T);
 
 	fn next(&mut self) -> Option<Self::Item> {
 		if let Some(index) = self.next_occupied_slot_index {
@@ -34,7 +34,7 @@ impl<'a, T> Iterator for Iter<'a, T> {
 			{
 				self.next_occupied_slot_index = *next_occupied_slot_index;
 				Some((
-					Index {
+					Key {
 						index,
 						generation: slot.generation,
 					},
@@ -68,7 +68,7 @@ impl<'a, T> IterMut<'a, T> {
 }
 
 impl<'a, T> Iterator for IterMut<'a, T> {
-	type Item = (Index, &'a mut T);
+	type Item = (Key, &'a mut T);
 
 	fn next(&mut self) -> Option<Self::Item> {
 		if let Some(index) = self.next_occupied_slot_index {
@@ -81,7 +81,7 @@ impl<'a, T> Iterator for IterMut<'a, T> {
 			{
 				self.next_occupied_slot_index = *next_occupied_slot_index;
 				Some((
-					Index {
+					Key {
 						index,
 						generation: slot.generation,
 					},
@@ -121,11 +121,11 @@ impl<'a, T, F: FnMut(&T) -> bool> DrainFilter<'a, T, F> {
 }
 
 impl<'a, T, F: FnMut(&T) -> bool> Iterator for DrainFilter<'a, T, F> {
-	type Item = (Index, T);
+	type Item = (Key, T);
 
 	fn next(&mut self) -> Option<Self::Item> {
-		while let Some(raw_index) = self.next_occupied_slot_index {
-			let slot = &mut self.arena.slots[raw_index];
+		while let Some(index) = self.next_occupied_slot_index {
+			let slot = &mut self.arena.slots[index];
 			if let ArenaSlotState::Occupied {
 				data,
 				next_occupied_slot_index,
@@ -134,14 +134,14 @@ impl<'a, T, F: FnMut(&T) -> bool> Iterator for DrainFilter<'a, T, F> {
 			{
 				self.next_occupied_slot_index = *next_occupied_slot_index;
 				if (self.filter)(data) {
-					let index = Index {
-						index: raw_index,
+					let key = Key {
+						index,
 						generation: slot.generation,
 					};
 					return self
 						.arena
-						.remove_at_raw_index(raw_index)
-						.map(|element| (index, element));
+						.remove_from_slot(index)
+						.map(|element| (key, element));
 				}
 			} else {
 				panic!("the iterator should not encounter a free slot");

@@ -3,7 +3,7 @@ use std::sync::{
 	Arc,
 };
 
-use crate::{ArenaFull, Index};
+use crate::{ArenaFull, Key};
 
 /// Represents that a [`ControllerSlot`] does not have a free slot
 /// after it.
@@ -45,7 +45,7 @@ impl ControllerInner {
 		}
 	}
 
-	fn try_reserve(&self) -> Result<Index, ArenaFull> {
+	fn try_reserve(&self) -> Result<Key, ArenaFull> {
 		let first_free_slot_index = self.first_free_slot_index.load(Ordering::SeqCst);
 		if first_free_slot_index == NO_NEXT_FREE_SLOT {
 			return Err(ArenaFull);
@@ -56,7 +56,7 @@ impl ControllerInner {
 			slot.next_free_slot_index.load(Ordering::SeqCst),
 			Ordering::SeqCst,
 		);
-		Ok(Index {
+		Ok(Key {
 			index: first_free_slot_index,
 			generation: slot.generation.load(Ordering::SeqCst),
 		})
@@ -74,7 +74,7 @@ impl ControllerInner {
 	}
 }
 
-/// Manages [`Index`] reservations for an [`Arena`](super::Arena).
+/// Manages [`Key`] reservations for an [`Arena`](super::Arena).
 #[derive(Debug, Clone)]
 pub struct Controller(Arc<ControllerInner>);
 
@@ -83,8 +83,8 @@ impl Controller {
 		Self(Arc::new(ControllerInner::new(capacity)))
 	}
 
-	/// Tries to reserve an index for the [`Arena`](super::Arena).
-	pub fn try_reserve(&self) -> Result<Index, ArenaFull> {
+	/// Tries to reserve a key for the [`Arena`](super::Arena).
+	pub fn try_reserve(&self) -> Result<Key, ArenaFull> {
 		self.0.try_reserve()
 	}
 

@@ -1,11 +1,11 @@
 /*!
 `atomic_arena` provides a generational [`Arena`] that you can reserve
-an [`Index`] for ahead of time using a [`Controller`]. [`Controller`]s
+an [`Key`] for ahead of time using a [`Controller`]. [`Controller`]s
 are backed by atomics, so they can be cloned and used across threads
 and still have consistent state.
 
 This is useful when you want to insert an item into an [`Arena`] on
-a different thread, but you want to have a valid [`Index`] for that
+a different thread, but you want to have a valid [`Key`] for that
 item immediately on the current thread.
 */
 
@@ -21,18 +21,18 @@ mod test;
 
 pub use controller::Controller;
 
-use error::{ArenaFull, IndexNotReserved};
+use error::{ArenaFull, KeyNotReserved};
 use iter::{DrainFilter, Iter, IterMut};
 use slot::{ArenaSlot, ArenaSlotState};
 
 /// A unique identifier for an item in an [`Arena`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Index {
+pub struct Key {
 	index: usize,
 	generation: usize,
 }
 
-/// A container of items that can be accessed via an [`Index`].
+/// A container of items that can be accessed via an [`Key`].
 #[derive(Debug)]
 pub struct Arena<T> {
 	controller: Controller,
@@ -75,48 +75,48 @@ impl<T> Arena<T> {
 	}
 
 	/// Tries to insert an item into the [`Arena`] with a previously
-	/// reserved [`Index`].
-	pub fn insert_with_index(&mut self, index: Index, data: T) -> Result<(), IndexNotReserved> {
-		// make sure the index is reserved
+	/// reserved [`Key`].
+	pub fn insert_with_key(&mut self, key: Key, data: T) -> Result<(), KeyNotReserved> {
+		// make sure the key is reserved
 		{
-			let slot = &mut self.slots[index.index];
+			let slot = &mut self.slots[key.index];
 			if let ArenaSlotState::Occupied { .. } = &slot.state {
-				return Err(IndexNotReserved);
+				return Err(KeyNotReserved);
 			}
-			if slot.generation != index.generation {
-				return Err(IndexNotReserved);
+			if slot.generation != key.generation {
+				return Err(KeyNotReserved);
 			}
 		}
 
 		// update the previous head to point to the new head
 		// as the previous occupied slot
 		if let Some(head_index) = self.first_occupied_slot_index {
-			self.slots[head_index].set_previous_occupied_slot_index(Some(index.index));
+			self.slots[head_index].set_previous_occupied_slot_index(Some(key.index));
 		}
 
 		// insert the new data
-		self.slots[index.index].state = ArenaSlotState::Occupied {
+		self.slots[key.index].state = ArenaSlotState::Occupied {
 			data,
 			previous_occupied_slot_index: None,
 			next_occupied_slot_index: self.first_occupied_slot_index,
 		};
 
 		// update the head
-		self.first_occupied_slot_index = Some(index.index);
+		self.first_occupied_slot_index = Some(key.index);
 
 		Ok(())
 	}
 
-	/// Tries to reserve an [`Index`], and, if successful, inserts
-	/// an item into the [`Arena`] with that [`Index`] and
-	/// returns the [`Index`].
-	pub fn insert(&mut self, data: T) -> Result<Index, ArenaFull> {
-		let index = self.controller.try_reserve()?;
-		self.insert_with_index(index, data).unwrap();
-		Ok(index)
+	/// Tries to reserve an [`Key`], and, if successful, inserts
+	/// an item into the [`Arena`] with that [`Key`] and
+	/// returns the [`Key`].
+	pub fn insert(&mut self, data: T) -> Result<Key, ArenaFull> {
+		let key = self.controller.try_reserve()?;
+		self.insert_with_key(key, data).unwrap();
+		Ok(key)
 	}
 
-	fn remove_at_raw_index(&mut self, index: usize) -> Option<T> {
+	fn remove_from_slot(&mut self, index: usize) -> Option<T> {
 		let slot = &mut self.slots[index];
 		let state = std::mem::replace(&mut slot.state, ArenaSlotState::Free);
 		match state {
@@ -154,10 +154,10 @@ impl<T> Arena<T> {
 		}
 	}
 
-	/// If the [`Arena`] contains an item with the given [`Index`],
+	/// If the [`Arena`] contains an item with the given [`Key`],
 	/// removes it from the [`Arena`] and returns `Some(item)`.
 	/// Otherwise, returns `None`.
-	pub fn remove(&mut self, index: Index) -> Option<T> {
+	pub fn remove(&mut self, key: Key) -> Option<T> {
 		// TODO: answer the following questions:
 		// - if you reserve a key, then try to remove the key
 		// without having inserted anything, should the slot
@@ -165,18 +165,18 @@ impl<T> Arena<T> {
 		// - what should happen if you try to remove a slot
 		// with the wrong generation? currently the answer is
 		// it just returns None like normal
-		let slot = &mut self.slots[index.index];
-		if slot.generation != index.generation {
+		let slot = &mut self.slots[key.index];
+		if slot.generation != key.generation {
 			return None;
 		}
-		self.remove_at_raw_index(index.index)
+		self.remove_from_slot(key.index)
 	}
 
 	/// Returns a shared reference to the item in the [`Arena`] with
-	/// the given [`Index`] if it exists. Otherwise, returns `None`.
-	pub fn get(&self, index: Index) -> Option<&T> {
-		let slot = &self.slots[index.index];
-		if slot.generation != index.generation {
+	/// the given [`Key`] if it exists. Otherwise, returns `None`.
+	pub fn get(&self, key: Key) -> Option<&T> {
+		let slot = &self.slots[key.index];
+		if slot.generation != key.generation {
 			return None;
 		}
 		match &slot.state {
@@ -186,10 +186,10 @@ impl<T> Arena<T> {
 	}
 
 	/// Returns a mutable reference to the item in the [`Arena`] with
-	/// the given [`Index`] if it exists. Otherwise, returns `None`.
-	pub fn get_mut(&mut self, index: Index) -> Option<&mut T> {
-		let slot = &mut self.slots[index.index];
-		if slot.generation != index.generation {
+	/// the given [`Key`] if it exists. Otherwise, returns `None`.
+	pub fn get_mut(&mut self, key: Key) -> Option<&mut T> {
+		let slot = &mut self.slots[key.index];
+		if slot.generation != key.generation {
 			return None;
 		}
 		match &mut slot.state {
@@ -215,7 +215,7 @@ impl<T> Arena<T> {
 			{
 				let next_occupied_slot_index = next_occupied_slot_index.as_ref().copied();
 				if !f(data) {
-					self.remove_at_raw_index(index);
+					self.remove_from_slot(index);
 				}
 				index = match next_occupied_slot_index {
 					Some(index) => index,
@@ -250,23 +250,22 @@ impl<T> Arena<T> {
 	}
 }
 
-impl<T> std::ops::Index<Index> for Arena<T> {
+impl<T> std::ops::Index<Key> for Arena<T> {
 	type Output = T;
 
-	fn index(&self, index: Index) -> &Self::Output {
-		self.get(index).expect("No item associated with this index")
+	fn index(&self, key: Key) -> &Self::Output {
+		self.get(key).expect("No item associated with this key")
 	}
 }
 
-impl<T> std::ops::IndexMut<Index> for Arena<T> {
-	fn index_mut(&mut self, index: Index) -> &mut Self::Output {
-		self.get_mut(index)
-			.expect("No item associated with this index")
+impl<T> std::ops::IndexMut<Key> for Arena<T> {
+	fn index_mut(&mut self, key: Key) -> &mut Self::Output {
+		self.get_mut(key).expect("No item associated with this key")
 	}
 }
 
 impl<'a, T> IntoIterator for &'a Arena<T> {
-	type Item = (Index, &'a T);
+	type Item = (Key, &'a T);
 
 	type IntoIter = Iter<'a, T>;
 
@@ -276,7 +275,7 @@ impl<'a, T> IntoIterator for &'a Arena<T> {
 }
 
 impl<'a, T> IntoIterator for &'a mut Arena<T> {
-	type Item = (Index, &'a mut T);
+	type Item = (Key, &'a mut T);
 
 	type IntoIter = IterMut<'a, T>;
 
