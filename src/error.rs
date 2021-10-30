@@ -15,16 +15,25 @@ impl Display for ArenaFull {
 
 impl Error for ArenaFull {}
 
-/// Returned when trying to insert into an
-/// [`Arena`](super::Arena) with an key that hasn't
-/// been reserved.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct KeyNotReserved;
+/// An error that can occur when inserting an item
+/// into an [`Arena`](super::Arena) with an existing
+/// [`Key`](super::Key).
+pub enum InsertWithKeyError {
+	/// Cannot insert with this key because it is not reserved.
+	KeyNotReserved,
+	/// Cannot insert with this key because the slot index
+	/// or generation is invalid for this arena.
+	InvalidKey,
+}
 
-impl Display for KeyNotReserved {
+impl Display for InsertWithKeyError {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		f.write_str("Cannot insert with this key because it is not reserved")
+		match self {
+			InsertWithKeyError::KeyNotReserved => f.write_str("Cannot insert with this key because it is not reserved"),
+			InsertWithKeyError::InvalidKey => f.write_str("Cannot insert with this key because the slot index or generation is invalid for this arena."),
+		}
 	}
 }
 
-impl Error for KeyNotReserved {}
+impl Error for InsertWithKeyError {}

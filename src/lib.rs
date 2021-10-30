@@ -21,7 +21,7 @@ mod test;
 
 pub use controller::Controller;
 
-use error::{ArenaFull, KeyNotReserved};
+use error::{ArenaFull, InsertWithKeyError};
 use iter::{DrainFilter, Iter, IterMut};
 use slot::{ArenaSlot, ArenaSlotState};
 
@@ -76,16 +76,17 @@ impl<T> Arena<T> {
 
 	/// Tries to insert an item into the [`Arena`] with a previously
 	/// reserved [`Key`].
-	pub fn insert_with_key(&mut self, key: Key, data: T) -> Result<(), KeyNotReserved> {
-		// make sure the key is reserved
-		{
-			let slot = &mut self.slots[key.index];
-			if let ArenaSlotState::Occupied { .. } = &slot.state {
-				return Err(KeyNotReserved);
-			}
+	pub fn insert_with_key(&mut self, key: Key, data: T) -> Result<(), InsertWithKeyError> {
+		// make sure the key is valid and reserved
+		if let Some(slot) = self.slots.get(key.index) {
 			if slot.generation != key.generation {
-				return Err(KeyNotReserved);
+				return Err(InsertWithKeyError::InvalidKey);
 			}
+			if let ArenaSlotState::Occupied { .. } = &slot.state {
+				return Err(InsertWithKeyError::KeyNotReserved);
+			}
+		} else {
+			return Err(InsertWithKeyError::InvalidKey);
 		}
 
 		// update the previous head to point to the new head

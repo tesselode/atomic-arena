@@ -1,5 +1,5 @@
 use crate::{
-	error::{ArenaFull, KeyNotReserved},
+	error::{ArenaFull, InsertWithKeyError},
 	Arena,
 };
 
@@ -70,7 +70,41 @@ fn insert_with_key() {
 	// the item should be in the arena
 	assert_eq!(arena.get(key), Some(&1));
 	// we should not be able to insert again with the same key
-	assert_eq!(arena.insert_with_key(key, 2), Err(KeyNotReserved));
+	assert_eq!(
+		arena.insert_with_key(key, 2),
+		Err(InsertWithKeyError::KeyNotReserved)
+	);
+}
+
+#[test]
+fn insert_with_invalid_key_index() {
+	let key = {
+		let mut arena = Arena::new(5);
+		for _ in 0..4 {
+			arena.insert(()).unwrap();
+		}
+		arena.insert(()).unwrap()
+	};
+	let mut arena = Arena::new(3);
+	assert_eq!(
+		arena.insert_with_key(key, ()),
+		Err(InsertWithKeyError::InvalidKey)
+	);
+}
+
+#[test]
+fn insert_with_invalid_key_generation() {
+	let key = {
+		let mut arena = Arena::new(1);
+		let key = arena.insert(()).unwrap();
+		arena.remove(key);
+		arena.insert(()).unwrap()
+	};
+	let mut arena = Arena::new(1);
+	assert_eq!(
+		arena.insert_with_key(key, ()),
+		Err(InsertWithKeyError::InvalidKey)
+	);
 }
 
 #[test]
