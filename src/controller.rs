@@ -45,6 +45,13 @@ impl ControllerInner {
 		}
 	}
 
+	fn remaining(&self) -> usize {
+		self.slots
+			.iter()
+			.filter(|slot| slot.free.load(Ordering::SeqCst))
+			.count()
+	}
+
 	fn try_reserve(&self) -> Result<Key, ArenaFull> {
 		let first_free_slot_index = self.first_free_slot_index.load(Ordering::SeqCst);
 		if first_free_slot_index == NO_NEXT_FREE_SLOT {
@@ -81,6 +88,11 @@ pub struct Controller(Arc<ControllerInner>);
 impl Controller {
 	pub(crate) fn new(capacity: usize) -> Self {
 		Self(Arc::new(ControllerInner::new(capacity)))
+	}
+
+	/// Returns the number of keys still available to reserve.
+	pub fn remaining(&self) -> usize {
+		self.0.remaining()
 	}
 
 	/// Tries to reserve a key for the [`Arena`](super::Arena).

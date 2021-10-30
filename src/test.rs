@@ -61,6 +61,19 @@ fn len() {
 }
 
 #[test]
+fn remaining() {
+	let mut arena = Arena::new(3);
+	let controller = arena.controller();
+	assert_eq!(controller.remaining(), 3);
+	controller.try_reserve().unwrap();
+	assert_eq!(controller.remaining(), 2);
+	let key = arena.insert(()).unwrap();
+	assert_eq!(controller.remaining(), 1);
+	arena.remove(key);
+	assert_eq!(controller.remaining(), 2);
+}
+
+#[test]
 fn insert_with_key() {
 	let mut arena = Arena::new(3);
 	let controller = arena.controller();
