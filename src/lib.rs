@@ -1,6 +1,6 @@
 /*!
 `atomic_arena` provides a generational [`Arena`] that you can reserve
-an [`Key`] for ahead of time using a [`Controller`]. [`Controller`]s
+a [`Key`] for ahead of time using a [`Controller`]. [`Controller`]s
 are backed by atomics, so they can be cloned and used across threads
 and still have consistent state.
 
@@ -32,7 +32,7 @@ pub struct Key {
 	generation: usize,
 }
 
-/// A container of items that can be accessed via an [`Key`].
+/// A container of items that can be accessed via a [`Key`].
 #[derive(Debug)]
 pub struct Arena<T> {
 	controller: Controller,
@@ -108,7 +108,7 @@ impl<T> Arena<T> {
 		Ok(())
 	}
 
-	/// Tries to reserve an [`Key`], and, if successful, inserts
+	/// Tries to reserve a [`Key`], and, if successful, inserts
 	/// an item into the [`Arena`] with that [`Key`] and
 	/// returns the [`Key`].
 	pub fn insert(&mut self, data: T) -> Result<Key, ArenaFull> {
