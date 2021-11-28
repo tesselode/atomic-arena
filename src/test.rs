@@ -61,16 +61,29 @@ fn len() {
 }
 
 #[test]
-fn remaining() {
+fn controller_capacity() {
 	let mut arena = Arena::new(3);
 	let controller = arena.controller();
-	assert_eq!(controller.remaining(), 3);
+	assert_eq!(controller.capacity(), 3);
 	controller.try_reserve().unwrap();
-	assert_eq!(controller.remaining(), 2);
+	assert_eq!(controller.capacity(), 3);
 	let key = arena.insert(()).unwrap();
-	assert_eq!(controller.remaining(), 1);
+	assert_eq!(controller.capacity(), 3);
 	arena.remove(key);
-	assert_eq!(controller.remaining(), 2);
+	assert_eq!(controller.capacity(), 3);
+}
+
+#[test]
+fn controller_len() {
+	let mut arena = Arena::new(3);
+	let controller = arena.controller();
+	assert_eq!(controller.len(), 0);
+	controller.try_reserve().unwrap();
+	assert_eq!(controller.len(), 1);
+	let key = arena.insert(()).unwrap();
+	assert_eq!(controller.len(), 2);
+	arena.remove(key);
+	assert_eq!(controller.len(), 1);
 }
 
 #[test]

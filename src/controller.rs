@@ -45,10 +45,14 @@ impl ControllerInner {
 		}
 	}
 
-	fn remaining(&self) -> usize {
+	fn capacity(&self) -> usize {
+		self.slots.len()
+	}
+
+	fn len(&self) -> usize {
 		self.slots
 			.iter()
-			.filter(|slot| slot.free.load(Ordering::SeqCst))
+			.filter(|slot| !slot.free.load(Ordering::SeqCst))
 			.count()
 	}
 
@@ -90,9 +94,19 @@ impl Controller {
 		Self(Arc::new(ControllerInner::new(capacity)))
 	}
 
-	/// Returns the number of keys still available to reserve.
-	pub fn remaining(&self) -> usize {
-		self.0.remaining()
+	/// Returns the total capacity of the arena.
+	pub fn capacity(&self) -> usize {
+		self.0.capacity()
+	}
+
+	/// Returns the number of items in the arena.
+	pub fn len(&self) -> usize {
+		self.0.len()
+	}
+
+	/// Returns `true` if the arena is empty.
+	pub fn is_empty(&self) -> bool {
+		self.len() == 0
 	}
 
 	/// Tries to reserve a key for the [`Arena`](super::Arena).
