@@ -1,9 +1,14 @@
 [package]
 name = "atomic-arena"
 version = "0.1.0"
+authors = ["Andrew Minnich <aminnich3@gmail.com>"]
 edition = "2018"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+description = "Generational arena that can be controlled across threads"
+readme = "readme.md"
+repository = "https://github.com/tesselode/atomic-arena"
+license = "MIT OR Apache-2.0"
+keywords = ["arena", "generational"]
+categories = ["concurrency", "data-structures"]
 
 [dev-dependencies]
 criterion = "0.3.4"
