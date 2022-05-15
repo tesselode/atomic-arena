@@ -86,11 +86,23 @@ impl ControllerInner {
 		let slot = &self.slots[index];
 		slot.free.store(true, Ordering::SeqCst);
 		slot.generation.fetch_add(1, Ordering::SeqCst);
-		slot.next_free_slot_index.store(
-			self.first_free_slot_index.load(Ordering::SeqCst),
-			Ordering::SeqCst,
-		);
-		self.first_free_slot_index.store(index, Ordering::SeqCst);
+		loop {
+			let first_free_slot_index = self.first_free_slot_index.load(Ordering::SeqCst);
+			slot.next_free_slot_index
+				.store(first_free_slot_index, Ordering::SeqCst);
+			if self
+				.first_free_slot_index
+				.compare_exchange_weak(
+					first_free_slot_index,
+					index,
+					Ordering::SeqCst,
+					Ordering::SeqCst,
+				)
+				.is_ok()
+			{
+				break;
+			}
+		}
 	}
 }
 
