@@ -57,20 +57,29 @@ impl ControllerInner {
 	}
 
 	fn try_reserve(&self) -> Result<Key, ArenaFull> {
-		let first_free_slot_index = self.first_free_slot_index.load(Ordering::SeqCst);
-		if first_free_slot_index == NO_NEXT_FREE_SLOT {
-			return Err(ArenaFull);
+		loop {
+			let first_free_slot_index = self.first_free_slot_index.load(Ordering::SeqCst);
+			if first_free_slot_index == NO_NEXT_FREE_SLOT {
+				return Err(ArenaFull);
+			}
+			let slot = &self.slots[first_free_slot_index];
+			if self
+				.first_free_slot_index
+				.compare_exchange_weak(
+					first_free_slot_index,
+					slot.next_free_slot_index.load(Ordering::SeqCst),
+					Ordering::SeqCst,
+					Ordering::SeqCst,
+				)
+				.is_ok()
+			{
+				slot.free.store(false, Ordering::SeqCst);
+				return Ok(Key {
+					index: first_free_slot_index,
+					generation: slot.generation.load(Ordering::SeqCst),
+				});
+			}
 		}
-		let slot = &self.slots[first_free_slot_index];
-		slot.free.store(false, Ordering::SeqCst);
-		self.first_free_slot_index.store(
-			slot.next_free_slot_index.load(Ordering::SeqCst),
-			Ordering::SeqCst,
-		);
-		Ok(Key {
-			index: first_free_slot_index,
-			generation: slot.generation.load(Ordering::SeqCst),
-		})
 	}
 
 	fn free(&self, index: usize) {
